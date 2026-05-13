@@ -229,8 +229,10 @@ export enum SharedEnum {
 			t.Fatalf("Failed to send DidChangeWatchedFiles: %v", err)
 		}
 
-		// Wait for LSP to process the change
-		time.Sleep(3 * time.Second)
+		// Wait for ts-server to re-publish consumer.ts's diagnostics after
+		// the helper change cascades.
+		consumerURI := protocol.DocumentUri("file://" + consumerPath)
+		suite.Client.WaitForNextDiagnostics(ctx, consumerURI, 10*time.Second, 500*time.Millisecond)
 
 		// Force reopen the consumer file to ensure LSP reevaluates it
 		err = suite.Client.CloseFile(ctx, consumerPath)
@@ -243,8 +245,8 @@ export enum SharedEnum {
 			t.Fatalf("Failed to reopen consumer.ts: %v", err)
 		}
 
-		// Wait for diagnostics to be generated
-		time.Sleep(3 * time.Second)
+		// Wait for the post-reopen publish.
+		suite.Client.WaitForNextDiagnostics(ctx, consumerURI, 10*time.Second, 500*time.Millisecond)
 
 		// Check diagnostics again on consumer file - should now have an error
 		result, err = tools.GetDiagnosticsForFile(ctx, suite.Client, consumerPath, 2, true)

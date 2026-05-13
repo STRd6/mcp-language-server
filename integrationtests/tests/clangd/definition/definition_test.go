@@ -16,7 +16,7 @@ import (
 func TestReadDefinition(t *testing.T) {
 	// Helper function to open all files and wait for indexing
 	openAllFilesAndWait := func(suite *common.TestSuite, ctx context.Context) {
-		// Open one file so that clangd loads compiles commands and begins indexing
+		// Open one file so that clangd loads compile commands and begins indexing.
 		filesToOpen := []string{
 			"src/main.cpp",
 		}
@@ -25,12 +25,12 @@ func TestReadDefinition(t *testing.T) {
 			filePath := filepath.Join(suite.WorkspaceDir, file)
 			err := suite.Client.OpenFile(ctx, filePath)
 			if err != nil {
-				// Don't fail the test, some files might not exist in certain tests
 				t.Logf("Note: Failed to open %s: %v", file, err)
 			}
 		}
-		// Wait for indexing to complete. clangd won't index files until they are opened.
-		time.Sleep(10 * time.Second)
+		// Wait for clangd's backgroundIndexProgress to end (title contains
+		// "indexing"). Falls through after 30s if clangd never signals.
+		common.WaitForReady(ctx, suite.Client, 30*time.Second)
 	}
 
 	suite := internal.GetTestSuite(t)
@@ -124,11 +124,10 @@ func TestReadDefinitionInAnotherFile(t *testing.T) {
 			filePath := filepath.Join(suite.WorkspaceDir, file)
 			err := suite.Client.OpenFile(ctx, filePath)
 			if err != nil {
-				// Don't fail the test, some files might not exist in certain tests
 				t.Logf("Note: Failed to open %s: %v", file, err)
 			}
 		}
-		time.Sleep(5 * time.Second)
+		common.WaitForReady(ctx, suite.Client, 30*time.Second)
 	}
 
 	suite := internal.GetTestSuite(t)

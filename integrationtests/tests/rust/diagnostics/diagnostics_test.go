@@ -158,8 +158,10 @@ pub fn helper_function(value: i32) -> String {
 			t.Fatalf("Failed to send DidChangeWatchedFiles: %v", err)
 		}
 
-		// Wait for LSP to process the change
-		time.Sleep(6 * time.Second)
+		// Wait for rust-analyzer to re-publish consumer.rs's diagnostics
+		// after the helper change cascades.
+		consumerURI := protocol.DocumentUri("file://" + consumerPath)
+		suite.Client.WaitForNextDiagnostics(ctx, consumerURI, 15*time.Second, 500*time.Millisecond)
 
 		// Force reopen the consumer file to ensure LSP reevaluates it
 		err = suite.Client.OpenFile(ctx, consumerPath)
@@ -167,8 +169,8 @@ pub fn helper_function(value: i32) -> String {
 			t.Fatalf("Failed to reopen consumer.rs: %v", err)
 		}
 
-		// Wait for LSP to process the change
-		time.Sleep(6 * time.Second)
+		// Wait for the post-reopen publish.
+		suite.Client.WaitForNextDiagnostics(ctx, consumerURI, 15*time.Second, 500*time.Millisecond)
 
 		// Check diagnostics again on consumer file - should now have an error
 		result, err = tools.GetDiagnosticsForFile(ctx, suite.Client, consumerPath, 2, true)

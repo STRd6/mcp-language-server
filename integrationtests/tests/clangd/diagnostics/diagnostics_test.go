@@ -31,9 +31,7 @@ func TestDiagnostics(t *testing.T) {
 				t.Logf("Note: Failed to open %s: %v", file, err)
 			}
 		}
-		// Wait for indexing to complete. clangd won't index files until they are opened.
-		time.Sleep(10 * time.Second)
-
+		common.WaitForReady(ctx, suite.Client, 30*time.Second)
 	}
 
 	// Test with a clean file

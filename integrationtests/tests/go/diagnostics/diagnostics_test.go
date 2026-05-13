@@ -147,8 +147,10 @@ func HelperFunction(value int) string {
 			t.Fatalf("Failed to send DidChangeWatchedFiles: %v", err)
 		}
 
-		// Wait for LSP to process the change
-		time.Sleep(3 * time.Second)
+		// Wait for gopls to re-publish consumer.go's diagnostics after the
+		// helper change cascades. Replaces a 3s blind sleep.
+		consumerURI := protocol.DocumentUri("file://" + consumerPath)
+		suite.Client.WaitForNextDiagnostics(ctx, consumerURI, 10*time.Second, 500*time.Millisecond)
 
 		// Force reopen the consumer file to ensure LSP reevaluates it
 		err = suite.Client.CloseFile(ctx, consumerPath)
@@ -161,8 +163,8 @@ func HelperFunction(value int) string {
 			t.Fatalf("Failed to reopen consumer.go: %v", err)
 		}
 
-		// Wait for diagnostics to be generated
-		time.Sleep(3 * time.Second)
+		// Wait for the post-reopen publish.
+		suite.Client.WaitForNextDiagnostics(ctx, consumerURI, 10*time.Second, 500*time.Millisecond)
 
 		// Check diagnostics again on consumer file - should now have an error
 		result, err = tools.GetDiagnosticsForFile(ctx, suite.Client, consumerPath, 2, true)

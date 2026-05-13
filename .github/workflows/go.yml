@@ -11,6 +11,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Cap go test at 2m per package; default 10m lets LSP hangs burn full jobs.
+env:
+  GOFLAGS: "-timeout=2m"
+
 jobs:
   unit-tests:
     name: Unit Tests and Code Quality

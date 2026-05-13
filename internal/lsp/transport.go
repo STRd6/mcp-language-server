@@ -223,8 +223,13 @@ func (c *Client) Call(ctx context.Context, method string, params any, result any
 
 	lspLogger.Debug("Waiting for response to request ID: %v", msg.ID)
 
-	// Wait for response
-	resp := <-ch
+	// Honor ctx — some LSPs accept requests they never reply to.
+	var resp *Message
+	select {
+	case resp = <-ch:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 
 	lspLogger.Debug("Received response for request ID: %v", msg.ID)
 

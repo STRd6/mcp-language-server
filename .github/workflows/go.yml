@@ -171,8 +171,8 @@ jobs:
           bear -- make
           cd ../../../..
 
-      - name: Run Clangd definition tests
-        run: go test ./integrationtests/tests/clangd/definition...
-
-      - name: Run Clangd diagnostics tests
-        run: go test ./integrationtests/tests/clangd/diagnostics...
+      # -p 1 serializes clangd package tests: each spawns clangd against
+      # a workspace whose compile_commands.json still points to the shared
+      # source workspace, so parallel runs race on clangd's .cache writes.
+      - name: Run Clangd integration tests
+        run: go test -p 1 ./integrationtests/tests/clangd/...

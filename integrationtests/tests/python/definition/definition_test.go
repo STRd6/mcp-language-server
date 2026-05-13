@@ -15,9 +15,6 @@ import (
 func TestReadDefinition(t *testing.T) {
 	suite := internal.GetTestSuite(t)
 
-	ctx, cancel := context.WithTimeout(suite.Context, 10*time.Second)
-	defer cancel()
-
 	tests := []struct {
 		name         string
 		symbolName   string
@@ -79,7 +76,12 @@ func TestReadDefinition(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// Call the ReadDefinition tool
+			// Fresh ctx per subtest — pyright's cold-start cost on the
+			// first subtest would otherwise exhaust a shared budget and
+			// cascade into "context deadline exceeded" on the rest.
+			ctx, cancel := context.WithTimeout(suite.Context, 15*time.Second)
+			defer cancel()
+
 			result, err := tools.ReadDefinition(ctx, suite.Client, tc.symbolName)
 			if err != nil {
 				t.Fatalf("Failed to read definition: %v", err)

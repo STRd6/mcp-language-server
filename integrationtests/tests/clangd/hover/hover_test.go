@@ -25,12 +25,10 @@ func TestHover(t *testing.T) {
 			filePath := filepath.Join(suite.WorkspaceDir, file)
 			err := suite.Client.OpenFile(ctx, filePath)
 			if err != nil {
-				// Don't fail the test, some files might not exist in certain tests
 				t.Logf("Note: Failed to open %s: %v", file, err)
 			}
 		}
-		// Wait for indexing to complete. clangd won't index files until they are opened.
-		time.Sleep(5 * time.Second)
+		common.WaitForReady(ctx, suite.Client, 60*time.Second)
 	}
 
 	tests := []struct {
@@ -108,7 +106,7 @@ func TestHover(t *testing.T) {
 			// Get a test suite
 			suite := internal.GetTestSuite(t)
 
-			ctx, cancel := context.WithTimeout(suite.Context, 10*time.Second)
+			ctx, cancel := context.WithTimeout(suite.Context, 90*time.Second)
 			defer cancel()
 
 			// Open all files and wait for clangd to index them

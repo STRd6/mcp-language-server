@@ -171,8 +171,5 @@ jobs:
           bear -- make
           cd ../../../..
 
-      - name: Run Clangd definition tests
-        run: go test ./integrationtests/tests/clangd/definition...
-
-      - name: Run Clangd diagnostics tests
-        run: go test ./integrationtests/tests/clangd/diagnostics...
+      - name: Run Clangd integration tests
+        run: go test ./integrationtests/tests/clangd/...

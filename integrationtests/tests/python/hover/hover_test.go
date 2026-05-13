@@ -105,7 +105,8 @@ func TestHover(t *testing.T) {
 			// Get a test suite
 			suite := internal.GetTestSuite(t)
 
-			ctx, cancel := context.WithTimeout(suite.Context, 5*time.Second)
+			// 15s — pyright's first cold hover for a Variable can take ~13s.
+			ctx, cancel := context.WithTimeout(suite.Context, 15*time.Second)
 			defer cancel()
 
 			filePath := filepath.Join(suite.WorkspaceDir, tt.file)

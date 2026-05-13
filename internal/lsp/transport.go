@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/isaacphi/mcp-language-server/internal/logging"
 )
@@ -191,47 +192,67 @@ func (c *Client) handleMessages() {
 	}
 }
 
-// Call makes a request and waits for the response
-func (c *Client) Call(ctx context.Context, method string, params any, result any) error {
-	id := c.nextID.Add(1)
+// LSP error code: server received a request but the document changed
+// before processing completed (spec: "Any request that may return a result
+// that depends on the content of the document"). Per the spec, the client
+// should retry — see Call below.
+const lspContentModified = -32801
 
+// callOnce sends a single request and waits for its response, honoring ctx.
+// Returns the response message (which may carry an Error). Returns an error
+// only on transport/ctx failures.
+func (c *Client) callOnce(ctx context.Context, method string, params any) (*Message, error) {
+	id := c.nextID.Add(1)
 	lspLogger.Debug("Making call: method=%s id=%v", method, id)
 
 	msg, err := NewRequest(id, method, params)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Create response channel
 	ch := make(chan *Message, 1)
-	// Convert ID to string for map lookup
 	idStr := msg.ID.String()
 	c.handlersMu.Lock()
 	c.handlers[idStr] = ch
 	c.handlersMu.Unlock()
-
 	defer func() {
 		c.handlersMu.Lock()
 		delete(c.handlers, idStr)
 		c.handlersMu.Unlock()
 	}()
 
-	// Send request
 	if err := WriteMessage(c.stdin, msg); err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
+		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-
-	lspLogger.Debug("Waiting for response to request ID: %v", msg.ID)
 
 	// Honor ctx — some LSPs accept requests they never reply to.
-	var resp *Message
 	select {
-	case resp = <-ch:
+	case resp := <-ch:
+		return resp, nil
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 	}
+}
 
-	lspLogger.Debug("Received response for request ID: %v", msg.ID)
+// Call makes a request and waits for the response. Retries once on
+// ContentModified (-32801) since rust-analyzer routinely returns it while
+// indexing and the LSP spec marks the error as retryable.
+func (c *Client) Call(ctx context.Context, method string, params any, result any) error {
+	resp, err := c.callOnce(ctx, method, params)
+	if err != nil {
+		return err
+	}
+	if resp.Error != nil && resp.Error.Code == lspContentModified {
+		select {
+		case <-time.After(150 * time.Millisecond):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		resp, err = c.callOnce(ctx, method, params)
+		if err != nil {
+			return err
+		}
+	}
 
 	if resp.Error != nil {
 		lspLogger.Error("Request failed: %s (code: %d)", resp.Error.Message, resp.Error.Code)

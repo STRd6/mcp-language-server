@@ -176,9 +176,23 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string) (
 							Range: &protocol.Or_ClientSemanticTokensRequestOptions_range{},
 							Full:  &protocol.Or_ClientSemanticTokensRequestOptions_full{},
 						},
-						TokenTypes:     []string{},
-						TokenModifiers: []string{},
-						Formats:        []protocol.TokenFormat{},
+						// LSP servers only emit tokens whose type/modifier the
+						// client advertises. We list every standard type and
+						// modifier from the spec so the server's full legend is
+						// preserved end-to-end — required for semantic_tokens
+						// tool to dump anything useful.
+						TokenTypes: []string{
+							"namespace", "type", "class", "enum", "interface", "struct",
+							"typeParameter", "parameter", "variable", "property", "enumMember",
+							"event", "function", "method", "macro", "keyword", "modifier",
+							"comment", "string", "number", "regexp", "operator", "decorator",
+							"label",
+						},
+						TokenModifiers: []string{
+							"declaration", "definition", "readonly", "static", "deprecated",
+							"abstract", "async", "modification", "documentation", "defaultLibrary",
+						},
+						Formats: []protocol.TokenFormat{protocol.Relative},
 					},
 				},
 				Window: protocol.WindowClientCapabilities{},
@@ -193,6 +207,10 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string) (
 					"vendor":             true,
 					"vulncheck":          false,
 				},
+				// gopls treats semantic tokens as opt-in. Other LSP servers
+				// ignore unrecognised initializationOptions, so this is safe to
+				// always send.
+				"semanticTokens": true,
 			},
 		},
 	}

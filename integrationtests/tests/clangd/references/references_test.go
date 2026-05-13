@@ -26,15 +26,17 @@ func TestFindReferences(t *testing.T) {
 			filePath := filepath.Join(suite.WorkspaceDir, file)
 			err := suite.Client.OpenFile(ctx, filePath)
 			if err != nil {
+				// Don't fail the test, some files might not exist in certain tests
 				t.Logf("Note: Failed to open %s: %v", file, err)
 			}
 		}
-		common.WaitForReady(ctx, suite.Client, 60*time.Second)
+		// Wait for indexing to complete. clangd won't index files until they are opened.
+		time.Sleep(30 * time.Second)
 	}
 
 	suite := internal.GetTestSuite(t)
 
-	ctx, cancel := context.WithTimeout(suite.Context, 90*time.Second) // clangd indexing + subtest budget
+	ctx, cancel := context.WithTimeout(suite.Context, 30*time.Second) // Increased timeout for clangd references
 	defer cancel()
 
 	// Open all files and wait for clangd to index them

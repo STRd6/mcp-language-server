@@ -136,11 +136,22 @@ func (m *MockLSPClient) CountEvents(uri string, eventType protocol.FileChangeTyp
 	return count
 }
 
-// ResetEvents clears the recorded events
+// ResetEvents clears the recorded events and drains any pending notification
+// signals from previous activity (e.g. workspace scan, prior subtests). Without
+// the drain, WaitForEvent could return immediately on a stale signal before the
+// watcher's debounce fires for the new event under test, racing with the
+// CountEvents check and producing the "No create event received" flake.
 func (m *MockLSPClient) ResetEvents() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.events = []FileEvent{}
+	for {
+		select {
+		case <-m.eventsReceived:
+		default:
+			return
+		}
+	}
 }
 
 // WaitForEvent waits for at least one event to be received or context to be done
@@ -150,6 +161,27 @@ func (m *MockLSPClient) WaitForEvent(ctx context.Context) bool {
 		return true
 	case <-ctx.Done():
 		return false
+	}
+}
+
+// WaitForEventType waits until an event matching uri+eventType has been
+// recorded, or the context is done. This is the race-free variant for tests
+// that assert on a specific event: WaitForEvent returns on the *first* signal,
+// but a newly-created file produces both a Changed and a Created event (the
+// watcher routes the Write-after-Create through NotifyChange because it just
+// auto-opened the file). Tests waiting for the Created event must keep
+// draining signals until the matching event lands.
+func (m *MockLSPClient) WaitForEventType(ctx context.Context, uri string, eventType protocol.FileChangeType) bool {
+	for {
+		if m.CountEvents(uri, eventType) > 0 {
+			return true
+		}
+		select {
+		case <-m.eventsReceived:
+			// got a signal; loop back and re-check
+		case <-ctx.Done():
+			return false
+		}
 	}
 }
 

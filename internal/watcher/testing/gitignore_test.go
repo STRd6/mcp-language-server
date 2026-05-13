@@ -184,16 +184,13 @@ exact_file.txt
 			t.Fatalf("Failed to write file: %v", err)
 		}
 
+		// Wait for the Create notification specifically (see FileCreation in
+		// watcher_test.go for why WaitForEvent races here).
+		uri := "file://" + filePath
 		waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
 		defer waitCancel()
 
-		if !mockClient.WaitForEvent(waitCtx) {
-			t.Fatal("Timed out waiting for file creation event")
-		}
-
-		uri := "file://" + filePath
-		count := mockClient.CountEvents(uri, protocol.FileChangeType(protocol.Created))
-		if count == 0 {
+		if !mockClient.WaitForEventType(waitCtx, uri, protocol.FileChangeType(protocol.Created)) {
 			t.Errorf("No create event received for non-ignored file %s", filePath)
 		}
 	})

@@ -13,6 +13,7 @@ import (
 
 	"github.com/isaacphi/mcp-language-server/internal/logging"
 	"github.com/isaacphi/mcp-language-server/internal/lsp"
+	"github.com/isaacphi/mcp-language-server/internal/protocol"
 	"github.com/isaacphi/mcp-language-server/internal/watcher"
 )
 
@@ -29,6 +30,7 @@ type LSPTestConfig struct {
 type TestSuite struct {
 	Config       LSPTestConfig
 	Client       *lsp.Client
+	Capabilities *protocol.ServerCapabilities
 	WorkspaceDir string
 	TempDir      string
 	Context      context.Context
@@ -168,6 +170,7 @@ func (ts *TestSuite) Setup() error {
 	if err != nil {
 		return fmt.Errorf("initialize failed: %w", err)
 	}
+	ts.Capabilities = &initResult.Capabilities
 	ts.t.Logf("LSP initialized with capabilities: %+v", initResult.Capabilities)
 
 	ts.Watcher = watcher.NewWorkspaceWatcher(client)

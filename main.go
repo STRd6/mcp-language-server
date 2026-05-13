@@ -13,6 +13,7 @@ import (
 
 	"github.com/isaacphi/mcp-language-server/internal/logging"
 	"github.com/isaacphi/mcp-language-server/internal/lsp"
+	"github.com/isaacphi/mcp-language-server/internal/protocol"
 	"github.com/isaacphi/mcp-language-server/internal/watcher"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -33,6 +34,7 @@ type mcpServer struct {
 	ctx              context.Context
 	cancelFunc       context.CancelFunc
 	workspaceWatcher *watcher.WorkspaceWatcher
+	capabilities     *protocol.ServerCapabilities
 }
 
 func parseConfig() (*config, error) {
@@ -97,6 +99,7 @@ func (s *mcpServer) initializeLSP() error {
 		return fmt.Errorf("initialize failed: %v", err)
 	}
 
+	s.capabilities = &initResult.Capabilities
 	coreLogger.Debug("Server capabilities: %+v", initResult.Capabilities)
 
 	go s.workspaceWatcher.WatchWorkspace(s.ctx, s.config.workspaceDir)
@@ -115,7 +118,7 @@ func (s *mcpServer) start() error {
 		server.WithRecovery(),
 	)
 
-	err := s.registerTools()
+	err := s.registerTools(s.capabilities)
 	if err != nil {
 		return fmt.Errorf("tool registration failed: %v", err)
 	}

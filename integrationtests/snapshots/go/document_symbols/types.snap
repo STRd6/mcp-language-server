@@ -1,0 +1,9 @@
+/TEST_OUTPUT/workspace/types.go:
+
+• Struct SharedStruct [6:6-11:2]
+• Method (*SharedStruct).Method [14:1-16:2]
+• Interface SharedInterface [19:6-22:2]
+• Constant SharedConstant [25:7-25:38]
+• Class SharedType [28:6-28:20]
+• Method (*SharedStruct).Process [31:1-34:2]
+• Method (*SharedStruct).GetName [37:1-39:2]

@@ -71,7 +71,10 @@ func TestDiagnostics(t *testing.T) {
 		// Get a test suite with code that contains errors
 		suite := internal.GetTestSuite(t)
 
-		ctx, cancel := context.WithTimeout(suite.Context, 5*time.Second)
+		// 30s — openAllFilesAndWait sleeps 3s and the test sleeps another 3s
+		// before GetDiagnosticsForFile; 5s expires before the diag tool's
+		// GetFullDefinition completes, falling back to wider context lines.
+		ctx, cancel := context.WithTimeout(suite.Context, 30*time.Second)
 		defer cancel()
 
 		// Open all files and wait for TypeScript server to index them
@@ -125,7 +128,8 @@ console.log(result);
 		// Get a test suite with clean code
 		suite := internal.GetTestSuite(t)
 
-		ctx, cancel := context.WithTimeout(suite.Context, 5*time.Second)
+		// 30s — workflow below sleeps ~8s; 5s would expire mid-test.
+		ctx, cancel := context.WithTimeout(suite.Context, 30*time.Second)
 		defer cancel()
 
 		// Open all files and wait for TypeScript server to index them

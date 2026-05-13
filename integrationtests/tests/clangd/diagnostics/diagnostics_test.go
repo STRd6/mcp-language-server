@@ -41,7 +41,8 @@ func TestDiagnostics(t *testing.T) {
 		// Get a test suite with clean code
 		suite := internal.GetTestSuite(t)
 
-		ctx, cancel := context.WithTimeout(suite.Context, 10*time.Second)
+		// 60s — openAllFilesAndWait sleeps 10s for indexing.
+		ctx, cancel := context.WithTimeout(suite.Context, 60*time.Second)
 		defer cancel()
 
 		// Open all files and wait for clangd to index them
@@ -66,7 +67,8 @@ func TestDiagnostics(t *testing.T) {
 		// Get a test suite with code that contains errors
 		suite := internal.GetTestSuite(t)
 
-		ctx, cancel := context.WithTimeout(suite.Context, 10*time.Second)
+		// 60s — openAllFilesAndWait sleeps 10s for indexing.
+		ctx, cancel := context.WithTimeout(suite.Context, 60*time.Second)
 		defer cancel()
 
 		// Open all files and wait for clangd to index them

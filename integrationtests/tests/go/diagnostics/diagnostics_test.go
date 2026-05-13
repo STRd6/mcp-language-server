@@ -76,8 +76,8 @@ func TestDiagnostics(t *testing.T) {
 		// Wait for initial diagnostics to be generated
 		time.Sleep(2 * time.Second)
 
-		// Verify consumer.go is clean initially
-		ctx, cancel := context.WithTimeout(suite.Context, 5*time.Second)
+		// 30s — workflow below sleeps ~8s; 5s would expire mid-test.
+		ctx, cancel := context.WithTimeout(suite.Context, 30*time.Second)
 		defer cancel()
 
 		// Ensure both helper.go and consumer.go are open in the LSP

@@ -80,8 +80,8 @@ func TestDiagnostics(t *testing.T) {
 		// Wait for initial diagnostics to be generated
 		time.Sleep(2 * time.Second)
 
-		// Create context
-		ctx, cancel := context.WithTimeout(suite.Context, 5*time.Second)
+		// 30s — workflow below sleeps ~8s; 5s would expire mid-test.
+		ctx, cancel := context.WithTimeout(suite.Context, 30*time.Second)
 		defer cancel()
 
 		// Ensure both helper.py and consumer_clean.py are open in the LSP

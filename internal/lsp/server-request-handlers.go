@@ -24,6 +24,13 @@ func HandleWorkspaceConfiguration(params json.RawMessage) (any, error) {
 	return []map[string]any{{}}, nil
 }
 
+// HandleWorkDoneProgressCreate acknowledges a server's request to create a
+// progress token. The actual $/progress notifications come through the
+// notification handler — this just lets the server proceed.
+func HandleWorkDoneProgressCreate(params json.RawMessage) (any, error) {
+	return nil, nil
+}
+
 func HandleRegisterCapability(params json.RawMessage) (any, error) {
 	var registerParams protocol.RegistrationParams
 	if err := json.Unmarshal(params, &registerParams); err != nil {

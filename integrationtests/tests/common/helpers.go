@@ -1,13 +1,31 @@
 package common
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/isaacphi/mcp-language-server/internal/lsp"
 )
+
+// WaitForReady blocks until the LSP signals "initial workspace work done"
+// via $/progress, or until timeout. Matches well-known titles emitted by
+// gopls, clangd, rust-analyzer, and typescript-language-server.
+// Pyright does not currently emit useful progress — falls through on timeout.
+func WaitForReady(ctx context.Context, client *lsp.Client, timeout time.Duration) {
+	_ = client.WaitForProgress(ctx, func(token, title string) bool {
+		t := strings.ToLower(title)
+		return strings.Contains(t, "indexing") ||
+			strings.Contains(t, "setting up workspace") ||
+			strings.Contains(t, "loading packages") ||
+			strings.Contains(t, "initializing js/ts")
+	}, timeout)
+}
 
 // Logger is an interface for logging in tests
 type Logger interface {

@@ -46,9 +46,24 @@ type Client struct {
 	diagnosticWaiters   map[protocol.DocumentUri][]chan struct{}
 	diagnosticWaitersMu sync.Mutex
 
+	// Progress state: tokens that have fired WorkDoneProgressEnd. Per-token
+	// channel-of-channels semantics handled by progressWaiters below.
+	progressEnded   map[string]bool
+	progressTitles  map[string]string
+	progressWaiters []*progressWaiter
+	progressMu      sync.Mutex
+
 	// Files are currently opened by the LSP
 	openFiles   map[string]*OpenFileInfo
 	openFilesMu sync.RWMutex
+}
+
+// progressWaiter holds a single WaitForProgress call's predicate and signal
+// channel. The handler scans waiters on every $/progress end and closes the
+// channel of any whose predicate matches.
+type progressWaiter struct {
+	match func(token, title string) bool
+	done  chan struct{}
 }
 
 func NewClient(command string, args ...string) (*Client, error) {
@@ -81,6 +96,8 @@ func NewClient(command string, args ...string) (*Client, error) {
 		serverRequestHandlers: make(map[string]ServerRequestHandler),
 		diagnostics:           make(map[protocol.DocumentUri][]protocol.Diagnostic),
 		diagnosticWaiters:     make(map[protocol.DocumentUri][]chan struct{}),
+		progressEnded:         make(map[string]bool),
+		progressTitles:        make(map[string]string),
 		openFiles:             make(map[string]*OpenFileInfo),
 	}
 
@@ -195,7 +212,12 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string) (
 						Formats: []protocol.TokenFormat{protocol.Relative},
 					},
 				},
-				Window: protocol.WindowClientCapabilities{},
+				// WorkDoneProgress enables server-initiated $/progress
+				// notifications — used by WaitForProgress to skip
+				// indexing/setup sleeps.
+				Window: protocol.WindowClientCapabilities{
+					WorkDoneProgress: true,
+				},
 			},
 			InitializationOptions: map[string]any{
 				"codelenses": map[string]bool{
@@ -228,9 +250,12 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string) (
 	c.RegisterServerRequestHandler("workspace/applyEdit", HandleApplyEdit)
 	c.RegisterServerRequestHandler("workspace/configuration", HandleWorkspaceConfiguration)
 	c.RegisterServerRequestHandler("client/registerCapability", HandleRegisterCapability)
+	c.RegisterServerRequestHandler("window/workDoneProgress/create", HandleWorkDoneProgressCreate)
 	c.RegisterNotificationHandler("window/showMessage", HandleServerMessage)
 	c.RegisterNotificationHandler("textDocument/publishDiagnostics",
 		func(params json.RawMessage) { HandleDiagnostics(c, params) })
+	c.RegisterNotificationHandler("$/progress",
+		func(params json.RawMessage) { c.handleProgress(params) })
 
 	// Notify the LSP server
 	err := c.Initialized(ctx, protocol.InitializedParams{})
@@ -350,6 +375,139 @@ func (c *Client) WaitForDiagnostics(ctx context.Context, uri protocol.DocumentUr
 	case <-time.After(timeout):
 		lspLogger.Debug("WaitForDiagnostics timed out for %s after %s", uri, timeout)
 	case <-ctx.Done():
+	}
+}
+
+// WaitForNextDiagnostics waits for the NEXT textDocument/publishDiagnostics
+// for uri (ignoring any cached prior publish), then settles. Use after edits
+// that should provoke a fresh server-side re-analysis — e.g. notifying the
+// LSP that a dependency file changed.
+func (c *Client) WaitForNextDiagnostics(ctx context.Context, uri protocol.DocumentUri, timeout, settle time.Duration) {
+	ch := make(chan struct{}, 1)
+
+	c.diagnosticWaitersMu.Lock()
+	c.diagnosticWaiters[uri] = append(c.diagnosticWaiters[uri], ch)
+	c.diagnosticWaitersMu.Unlock()
+
+	defer func() {
+		c.diagnosticWaitersMu.Lock()
+		waiters := c.diagnosticWaiters[uri]
+		for i, w := range waiters {
+			if w == ch {
+				c.diagnosticWaiters[uri] = append(waiters[:i], waiters[i+1:]...)
+				break
+			}
+		}
+		if len(c.diagnosticWaiters[uri]) == 0 {
+			delete(c.diagnosticWaiters, uri)
+		}
+		c.diagnosticWaitersMu.Unlock()
+	}()
+
+	select {
+	case <-ch:
+		select {
+		case <-time.After(settle):
+		case <-ctx.Done():
+		}
+	case <-time.After(timeout):
+		lspLogger.Debug("WaitForNextDiagnostics timed out for %s after %s", uri, timeout)
+	case <-ctx.Done():
+	}
+}
+
+// WaitForProgress blocks until a $/progress notification with kind="end"
+// arrives for a token (or its associated Begin title) matching the predicate,
+// or until ctx is cancelled or timeout elapses. If the matching token has
+// already ended, returns immediately. Returns nil on success, ctx.Err() on
+// cancel, or an error on timeout.
+//
+// Use to replace ad-hoc sleeps that wait for "LSP has finished indexing":
+// each server uses a distinguishing token or title for its workspace setup.
+func (c *Client) WaitForProgress(ctx context.Context, match func(token, title string) bool, timeout time.Duration) error {
+	c.progressMu.Lock()
+	for token, ended := range c.progressEnded {
+		if ended && match(token, c.progressTitles[token]) {
+			c.progressMu.Unlock()
+			return nil
+		}
+	}
+	w := &progressWaiter{match: match, done: make(chan struct{})}
+	c.progressWaiters = append(c.progressWaiters, w)
+	c.progressMu.Unlock()
+
+	defer func() {
+		c.progressMu.Lock()
+		for i, x := range c.progressWaiters {
+			if x == w {
+				c.progressWaiters = append(c.progressWaiters[:i], c.progressWaiters[i+1:]...)
+				break
+			}
+		}
+		c.progressMu.Unlock()
+	}()
+
+	select {
+	case <-w.done:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("progress wait timed out after %s", timeout)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// handleProgress is the $/progress notification handler. It tracks
+// Begin/End frames per token and signals any matching WaitForProgress
+// callers when an End frame arrives.
+func (c *Client) handleProgress(params json.RawMessage) {
+	var p protocol.ProgressParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		lspLogger.Debug("progress: unmarshal params failed: %v", err)
+		return
+	}
+	tokenStr := progressTokenString(p.Token)
+	// Value is the payload, with discriminator field "kind".
+	raw, _ := json.Marshal(p.Value)
+	var kind struct {
+		Kind  string `json:"kind"`
+		Title string `json:"title"`
+	}
+	_ = json.Unmarshal(raw, &kind)
+
+	c.progressMu.Lock()
+	switch kind.Kind {
+	case "begin":
+		c.progressTitles[tokenStr] = kind.Title
+		lspLogger.Debug("progress begin: token=%q title=%q", tokenStr, kind.Title)
+	case "end":
+		c.progressEnded[tokenStr] = true
+		title := c.progressTitles[tokenStr]
+		lspLogger.Debug("progress end: token=%q title=%q", tokenStr, title)
+		for _, w := range c.progressWaiters {
+			if w.match(tokenStr, title) {
+				select {
+				case <-w.done:
+				default:
+					close(w.done)
+				}
+			}
+		}
+	}
+	c.progressMu.Unlock()
+}
+
+// progressTokenString reduces an Or_ProgressToken to its string form.
+// JSON unmarshal produces either string or float64 (per the Or [int32 string]
+// type); both render the same to callers matching tokens.
+func progressTokenString(t protocol.ProgressToken) string {
+	switch v := t.Value.(type) {
+	case string:
+		return v
+	case float64:
+		return fmt.Sprintf("%g", v)
+	default:
+		return fmt.Sprintf("%v", v)
 	}
 }
 

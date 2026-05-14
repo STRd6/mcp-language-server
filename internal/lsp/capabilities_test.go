@@ -79,20 +79,42 @@ func TestHasDefinitionSupport(t *testing.T) {
 	}
 }
 
+func TestHasReferencesSupport(t *testing.T) {
+	cases := []struct {
+		name string
+		caps *protocol.ServerCapabilities
+		want bool
+	}{
+		{"both present", &protocol.ServerCapabilities{
+			ReferencesProvider:      refProvider(true),
+			WorkspaceSymbolProvider: wsProvider(true),
+		}, true},
+		{"references missing", &protocol.ServerCapabilities{
+			WorkspaceSymbolProvider: wsProvider(true),
+		}, false},
+		{"workspace symbol missing", &protocol.ServerCapabilities{
+			ReferencesProvider: refProvider(true),
+		}, false},
+		{"references Value nil", &protocol.ServerCapabilities{
+			ReferencesProvider:      refProvider(nil),
+			WorkspaceSymbolProvider: wsProvider(true),
+		}, false},
+		{"workspace symbol Value nil", &protocol.ServerCapabilities{
+			ReferencesProvider:      refProvider(true),
+			WorkspaceSymbolProvider: wsProvider(nil),
+		}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := HasReferencesSupport(c.caps); got != c.want {
+				t.Errorf("got %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 func TestOrTypeHelpers(t *testing.T) {
 	// Each Or_* helper rejects: pointer nil, pointer non-nil but Value nil; accepts non-nil Value.
-	t.Run("references supported", func(t *testing.T) {
-		caps := &protocol.ServerCapabilities{ReferencesProvider: refProvider(true)}
-		if !HasReferencesSupport(caps) {
-			t.Error("want true")
-		}
-	})
-	t.Run("references Value nil", func(t *testing.T) {
-		caps := &protocol.ServerCapabilities{ReferencesProvider: refProvider(nil)}
-		if HasReferencesSupport(caps) {
-			t.Error("want false")
-		}
-	})
 	t.Run("hover supported", func(t *testing.T) {
 		caps := &protocol.ServerCapabilities{HoverProvider: hoverProvider(true)}
 		if !HasHoverSupport(caps) {

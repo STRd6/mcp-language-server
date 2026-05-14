@@ -24,8 +24,13 @@ func HasReferencesSupport(caps *protocol.ServerCapabilities) bool {
 	if caps == nil {
 		return false
 	}
+	// References tool implementation calls workspace/symbol first to resolve
+	// the symbol name to a location, then textDocument/references, so both
+	// must be advertised. Parallels HasDefinitionSupport.
 	return caps.ReferencesProvider != nil &&
-		caps.ReferencesProvider.Value != nil
+		caps.ReferencesProvider.Value != nil &&
+		caps.WorkspaceSymbolProvider != nil &&
+		caps.WorkspaceSymbolProvider.Value != nil
 }
 
 func HasHoverSupport(caps *protocol.ServerCapabilities) bool {

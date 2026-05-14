@@ -243,7 +243,7 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 			return mcp.NewToolResultText(text), nil
 		})
 	} else {
-		coreLogger.Info("Skipping 'references' tool — LSP lacks references capability")
+		coreLogger.Info("Skipping 'references' tool — LSP lacks references or workspace/symbol")
 	}
 
 	if lsp.HasHoverSupport(caps) {

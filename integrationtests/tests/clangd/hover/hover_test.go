@@ -117,16 +117,9 @@ func TestHover(t *testing.T) {
 			// Get hover info
 			result, err := tools.GetHoverInfo(ctx, suite.Client, filePath, tt.line, tt.column)
 			if err != nil {
-				// For the "OutsideFile" test or "NoHoverInfo" we might expect an error or empty result
+				// For the "OutsideFile" test or "NoHoverInfo" we might expect an error.
 				if tt.name == "OutsideFile" || strings.HasPrefix(tt.name, "NoHoverInfo") {
-					// Create a snapshot even for error case or empty result
-					snapshotContent := "No hover information expected or error occurred."
-					if err != nil {
-						snapshotContent = err.Error()
-					} else if result != "" {
-						snapshotContent = result
-					}
-					common.SnapshotTest(t, "clangd", "hover", tt.snapshotName, snapshotContent)
+					common.SnapshotTest(t, "clangd", "hover", tt.snapshotName, err.Error())
 					return
 				}
 				t.Fatalf("GetHoverInfo failed for %s: %v. Result: %s", tt.name, err, result)

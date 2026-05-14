@@ -32,13 +32,8 @@ func TestHover(t *testing.T) {
 	common.WaitForReady(ctx, suite.Client, 10*time.Second)
 	time.Sleep(500 * time.Millisecond)
 
-	// Hover on the call site `add 2, 3` at line 4 column 11 (1-indexed).
-	// main.civet:
-	//   1| function add(a: number, b: number): number
-	//   2|   a + b
-	//   3|
-	//   4| result := add 2, 3
-	result, err := tools.GetHoverInfo(ctx, suite.Client, filePath, 4, 11)
+	// Hover on the `add` call at main.civet:7 col 9.
+	result, err := tools.GetHoverInfo(ctx, suite.Client, filePath, 7, 9)
 	if err != nil {
 		t.Fatalf("GetHoverInfo failed: %v", err)
 	}

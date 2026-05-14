@@ -1,0 +1,6 @@
+/TEST_OUTPUT/workspace/main.civet:
+
+Function add [1:1-2:8]
+Function multiply [4:1-5:8]
+Variable product [8:1-8:25]
+Variable sum [7:1-7:16]

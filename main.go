@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -33,6 +34,9 @@ type config struct {
 	disabledTools   []string
 
 	idleTimeout time.Duration
+
+	configFile string
+	lspConfig  map[string]any
 }
 
 type mcpServer struct {
@@ -58,6 +62,7 @@ func parseConfig() (*config, error) {
 	flag.StringVar(&cfg.lspCommand, "lsp", "", "LSP command to run (args should be passed after --)")
 	flag.StringVar(&cfg.disabledToolStr, "disable-tools", "", "Comma-separated list of tools to disable")
 	flag.DurationVar(&cfg.idleTimeout, "idle-timeout", 0, "Shut down after this duration of no MCP traffic (e.g. 10m); 0 disables")
+	flag.StringVar(&cfg.configFile, "config", "", "Path to a JSON file whose keys are LSP binary names and values are passed as initializationOptions for that LSP (see README)")
 	flag.Parse()
 
 	// Get remaining args after -- as LSP arguments
@@ -91,7 +96,39 @@ func parseConfig() (*config, error) {
 		return nil, fmt.Errorf("LSP command not found: %s", cfg.lspCommand)
 	}
 
+	if cfg.configFile != "" {
+		if err := parseConfigFile(cfg); err != nil {
+			return nil, fmt.Errorf("failed to parse config file: %v", err)
+		}
+	}
+
 	return cfg, nil
+}
+
+// parseConfigFile reads cfg.configFile and pulls out the entry whose key
+// matches the basename of cfg.lspCommand. Its value becomes the
+// initializationOptions sent to the LSP. Other keys are ignored so the
+// same file can configure several LSPs.
+func parseConfigFile(cfg *config) error {
+	data, err := os.ReadFile(cfg.configFile)
+	if err != nil {
+		return fmt.Errorf("failed to read config file: %v", err)
+	}
+
+	var all map[string]any
+	if err := json.Unmarshal(data, &all); err != nil {
+		return fmt.Errorf("failed to parse JSON config: %v", err)
+	}
+
+	name := strings.TrimSuffix(filepath.Base(cfg.lspCommand), filepath.Ext(cfg.lspCommand))
+	if entry, ok := all[name]; ok {
+		m, ok := entry.(map[string]any)
+		if !ok {
+			return fmt.Errorf("config for %q must be a JSON object", name)
+		}
+		cfg.lspConfig = m
+	}
+	return nil
 }
 
 func newServer(config *config) (*mcpServer, error) {
@@ -127,7 +164,7 @@ func (s *mcpServer) initializeLSP() error {
 	s.lspClient = client
 	s.workspaceWatcher = watcher.NewWorkspaceWatcher(client)
 
-	initResult, err := client.InitializeLSPClient(s.ctx, s.config.workspaceDir)
+	initResult, err := client.InitializeLSPClient(s.ctx, s.config.workspaceDir, s.config.lspConfig)
 	if err != nil {
 		return fmt.Errorf("initialize failed: %v", err)
 	}

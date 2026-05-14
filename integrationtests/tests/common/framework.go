@@ -166,7 +166,7 @@ func (ts *TestSuite) Setup() error {
 	ts.t.Logf("Started LSP: %s %v", ts.Config.Command, ts.Config.Args)
 
 	// Initialize LSP and set up file watcher
-	initResult, err := client.InitializeLSPClient(ts.Context, workspaceDir)
+	initResult, err := client.InitializeLSPClient(ts.Context, workspaceDir, nil)
 	if err != nil {
 		return fmt.Errorf("initialize failed: %w", err)
 	}

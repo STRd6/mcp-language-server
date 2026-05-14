@@ -142,7 +142,28 @@ func (c *Client) RegisterServerRequestHandler(method string, handler ServerReque
 	c.serverRequestHandlers[method] = handler
 }
 
-func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string) (*protocol.InitializeResult, error) {
+// defaultInitOptions are the InitializationOptions used when the caller
+// doesn't supply a per-LSP override. Mostly gopls-specific keys; other
+// LSPs ignore unknown fields per the spec.
+var defaultInitOptions = map[string]any{
+	"codelenses": map[string]bool{
+		"generate":           true,
+		"regenerate_cgo":     true,
+		"test":               true,
+		"tidy":               true,
+		"upgrade_dependency": true,
+		"vendor":             true,
+		"vulncheck":          false,
+	},
+	"semanticTokens": true,
+}
+
+func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string, customInitOptions map[string]any) (*protocol.InitializeResult, error) {
+	initOptions := defaultInitOptions
+	if len(customInitOptions) > 0 {
+		initOptions = customInitOptions
+	}
+
 	initParams := &protocol.InitializeParams{
 		WorkspaceFoldersInitializeParams: protocol.WorkspaceFoldersInitializeParams{
 			WorkspaceFolders: []protocol.WorkspaceFolder{
@@ -227,21 +248,7 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string) (
 					WorkDoneProgress: true,
 				},
 			},
-			InitializationOptions: map[string]any{
-				"codelenses": map[string]bool{
-					"generate":           true,
-					"regenerate_cgo":     true,
-					"test":               true,
-					"tidy":               true,
-					"upgrade_dependency": true,
-					"vendor":             true,
-					"vulncheck":          false,
-				},
-				// gopls treats semantic tokens as opt-in. Other LSP servers
-				// ignore unrecognised initializationOptions, so this is safe to
-				// always send.
-				"semanticTokens": true,
-			},
+			InitializationOptions: initOptions,
 		},
 	}
 

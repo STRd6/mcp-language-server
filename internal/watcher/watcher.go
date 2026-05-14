@@ -403,8 +403,8 @@ func (w *WorkspaceWatcher) matchesPattern(path string, pattern protocol.GlobPatt
 		return g.Match(filepath.Base(path))
 	}
 
-	// For relative patterns
-	basePath = protocol.DocumentUri(basePath).Path()
+	// patternInfo.GetBasePath() already returns a filesystem path
+	// (pattern_interfaces.go strips the file:// scheme).
 	basePath = filepath.ToSlash(basePath)
 
 	relPath, err := filepath.Rel(basePath, path)

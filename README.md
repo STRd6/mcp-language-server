@@ -160,6 +160,31 @@ This is an [MCP](https://modelcontextprotocol.io/introduction) server that runs 
   </div>
 </details>
 <details>
+  <summary>Civet (civet-lsp)</summary>
+  <div>
+    <p><strong>Install civet-lsp</strong>: <code>npm install -g @danielx/civet-language-server</code> (provides the <code>civet-lsp</code> binary).</p>
+    <p><strong>Configure your MCP client</strong>: This will be different but similar for each client. For Claude Desktop, add the following to <code>~/Library/Application\ Support/Claude/claude_desktop_config.json</code></p>
+
+<pre>
+{
+  "mcpServers": {
+    "language-server": {
+      "command": "mcp-language-server",
+      "args": [
+        "--workspace",
+        "/Users/you/dev/yourproject/",
+        "--lsp",
+        "civet-lsp",
+        "--",
+        "--stdio"
+      ]
+    }
+  }
+}
+</pre>
+  </div>
+</details>
+<details>
   <summary>Other</summary>
   <div>
     <p>I have only tested this repo with the servers above but it should be compatible with many more. Note:</p>
@@ -177,6 +202,7 @@ In addition to `--workspace` and `--lsp`:
 
 - `--disable-tools=tool1,tool2,...` — suppress specific tools after registration. Useful when pairing with another tool (e.g. disabling `edit_file` when running alongside `aider`).
 - `--idle-timeout=10m` — shut down after this duration with no MCP traffic. Default `0` (disabled). Useful when the parent editor doesn't clean up its MCP children on exit.
+- `--lsp-init-async` — initialize the LSP in a background goroutine so `ServeStdio` starts immediately. Capability-gated tools then register after the handshake via `tools/list_changed`, so the client must honor that notification (Claude Desktop / Cursor do; some MCP clients only read `tools/list` once at startup). Default is synchronous init so all tools appear in the first `tools/list` response.
 - `--config=/path/to/init.json` — pass per-LSP `initializationOptions`. The file is a JSON object keyed by LSP binary name; the matching entry becomes the LSP's `initializationOptions`. Solves cases like `rust-analyzer` needing `linkedProjects` or `gopls` needing specific build flags.
 
   ```jsonc
@@ -212,7 +238,7 @@ Capability-gated tools (registered only if the LSP advertises the capability):
 
 This fork tracks `isaacphi/main` and folds in fixes from contributor forks. Notable additions:
 
-- **Lazy LSP init** — `ServeStdio` starts immediately; tool handlers gate per-call on `waitForLSP` instead of stalling the MCP handshake while a slow LSP (Kotlin/Gradle, large rust-analyzer indexes) finishes startup. Adapted from upstream PR #127.
+- **LSP init scheduling** — synchronous by default so every capability-gated tool is registered before the first `tools/list` response (works with clients that don't honor `tools/list_changed`). Opt into the original lazy behavior with `--lsp-init-async`: `ServeStdio` starts immediately and tool handlers gate per-call on `waitForLSP` so a slow LSP (Kotlin/Gradle, large rust-analyzer indexes) doesn't stall the MCP handshake. Adapted from upstream PR #127.
 - **Handshake hardening** — server-request handlers registered before `initialize` so `workspace/configuration` etc. don't see "method not found"; duplicate `initialized` notification removed; cleanup paths guarded with `sync.Once`.
 - **Preopen removal** — the old "open every matching file on `client/registerCapability`" goroutine is gone. None of gopls / typescript-language-server / clangd / civet-lsp / rust-analyzer actually needed it, and it was the source of issue #83 ("too many open files").
 - **Faster diagnostics** — wait for `textDocument/publishDiagnostics` instead of a fixed 3 s sleep; soft-fail on `-32601` from push-only LSPs.

@@ -7,7 +7,7 @@
 
 This is an [MCP](https://modelcontextprotocol.io/introduction) server that runs and exposes a [language server](https://microsoft.github.io/language-server-protocol/) to LLMs. Not a language server for MCP, whatever that would be.
 
-> This is a downstream fork of [isaacphi/mcp-language-server](https://github.com/STRd6/mcp-language-server) with a few extra tools, flags, and stability fixes. See [Changes from upstream](#changes-from-upstream) below.
+> This is a downstream fork of [isaacphi/mcp-language-server](https://github.com/isaacphi/mcp-language-server) with a few extra tools, flags, and stability fixes. See [Changes from upstream](#changes-from-upstream) below.
 
 ## Demo
 
@@ -18,15 +18,9 @@ This is an [MCP](https://modelcontextprotocol.io/introduction) server that runs 
 ## Setup
 
 1. **Install Go**: Follow instructions at <https://golang.org/doc/install>
-2. **Install this server**: clone and build (this fork keeps the `github.com/isaacphi/...` module path so PRs back upstream stay clean, which means `go install github.com/STRd6/...` will not work directly):
+2. **Install this server**: `go install github.com/STRd6/mcp-language-server@latest`
 
-   ```bash
-   git clone https://github.com/STRd6/mcp-language-server.git
-   cd mcp-language-server
-   go install
-   ```
-
-   Or, to use upstream's released version: `go install github.com/STRd6/mcp-language-server@latest`.
+   Or, to use upstream's last release (no longer actively maintained): `go install github.com/isaacphi/mcp-language-server@latest`.
 3. **Install a language server**: _follow one of the guides below_
 4. **Configure your MCP client**: _follow one of the guides below_
 

@@ -1,11 +1,13 @@
 # MCP Language Server
 
-[![Go Tests](https://github.com/isaacphi/mcp-language-server/actions/workflows/go.yml/badge.svg)](https://github.com/isaacphi/mcp-language-server/actions/workflows/go.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/isaacphi/mcp-language-server)](https://goreportcard.com/report/github.com/isaacphi/mcp-language-server)
+[![CI](https://github.com/STRd6/mcp-language-server/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/STRd6/mcp-language-server/actions/workflows/go.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/STRd6/mcp-language-server)](https://goreportcard.com/report/github.com/STRd6/mcp-language-server)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/STRd6/mcp-language-server)](https://github.com/STRd6/mcp-language-server/blob/main/go.mod)
 [![GoDoc](https://pkg.go.dev/badge/github.com/isaacphi/mcp-language-server)](https://pkg.go.dev/github.com/isaacphi/mcp-language-server)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/isaacphi/mcp-language-server)](https://github.com/isaacphi/mcp-language-server/blob/main/go.mod)
 
 This is an [MCP](https://modelcontextprotocol.io/introduction) server that runs and exposes a [language server](https://microsoft.github.io/language-server-protocol/) to LLMs. Not a language server for MCP, whatever that would be.
+
+> This is a downstream fork of [isaacphi/mcp-language-server](https://github.com/isaacphi/mcp-language-server) with a few extra tools, flags, and stability fixes. See [Changes from upstream](#changes-from-upstream) below.
 
 ## Demo
 
@@ -16,7 +18,15 @@ This is an [MCP](https://modelcontextprotocol.io/introduction) server that runs 
 ## Setup
 
 1. **Install Go**: Follow instructions at <https://golang.org/doc/install>
-2. **Install or update this server**: `go install github.com/isaacphi/mcp-language-server@latest`
+2. **Install this server**: clone and build (this fork keeps the `github.com/isaacphi/...` module path so PRs back upstream stay clean, which means `go install github.com/STRd6/...` will not work directly):
+
+   ```bash
+   git clone https://github.com/STRd6/mcp-language-server.git
+   cd mcp-language-server
+   go install
+   ```
+
+   Or, to use upstream's released version: `go install github.com/isaacphi/mcp-language-server@latest`.
 3. **Install a language server**: _follow one of the guides below_
 4. **Configure your MCP client**: _follow one of the guides below_
 
@@ -167,14 +177,60 @@ This is an [MCP](https://modelcontextprotocol.io/introduction) server that runs 
   </div>
 </details>
 
+## Flags
+
+In addition to `--workspace` and `--lsp`:
+
+- `--disable-tools=tool1,tool2,...` — suppress specific tools after registration. Useful when pairing with another tool (e.g. disabling `edit_file` when running alongside `aider`).
+- `--idle-timeout=10m` — shut down after this duration with no MCP traffic. Default `0` (disabled). Useful when the parent editor doesn't clean up its MCP children on exit.
+- `--config=/path/to/init.json` — pass per-LSP `initializationOptions`. The file is a JSON object keyed by LSP binary name; the matching entry becomes the LSP's `initializationOptions`. Solves cases like `rust-analyzer` needing `linkedProjects` or `gopls` needing specific build flags.
+
+  ```jsonc
+  {
+    "rust-analyzer": { "linkedProjects": ["./Cargo.toml"] },
+    "gopls":          { "buildFlags": ["-tags=integration"] }
+  }
+  ```
+
+  When `--config` is absent, falls back to the previous hardcoded gopls-friendly defaults (`codelenses`, `semanticTokens`). Other LSPs ignore unknown init options per the LSP spec.
+
 ## Tools
 
-- `definition`: Retrieves the complete source code definition of any symbol (function, type, constant, etc.) from your codebase.
-- `references`: Locates all usages and references of a symbol throughout the codebase.
-- `diagnostics`: Provides diagnostic information for a specific file, including warnings and errors.
-- `hover`: Display documentation, type hints, or other hover information for a given location.
-- `rename_symbol`: Rename a symbol across a project.
-- `edit_file`: Allows making multiple text edits to a file based on line numbers. Provides a more reliable and context-economical way to edit files compared to search and replace based edit tools.
+Each tool is annotated with title + `ReadOnlyHint` / `DestructiveHint` so MCP clients can gate auto-approval and surface clearer labels. Tools that depend on a specific LSP capability are only registered when the connected LSP advertises support, so the tools/list response reflects what the language server can actually do.
+
+Always-on tools (every LSP):
+
+- `edit_file` (destructive): apply multiple text edits to a file based on line numbers. More reliable and token-efficient than search-and-replace edit tools.
+- `diagnostics` (read-only): diagnostic information for a specific file. Waits for `textDocument/publishDiagnostics` rather than sleeping; works with push-only LSPs that reject `textDocument/diagnostic`.
+
+Capability-gated tools (registered only if the LSP advertises the capability):
+
+- `definition` (read-only): complete source-code definition of a symbol.
+- `references` (read-only): all usages and references of a symbol throughout the codebase.
+- `hover` (read-only): documentation, type hints, or other hover information at a position.
+- `rename_symbol` (destructive): rename a symbol across the project.
+- `document_symbols` (read-only): hierarchical symbol outline of a file (classes, functions, methods, etc.).
+- `code_actions` (read-only): available code actions (quick fixes, refactorings, source actions) for a range.
+- `format_document` (destructive): format a document (or a range within it) and apply the resulting edits to disk.
+- `semantic_tokens` (read-only): full semantic-tokens response, decoded with the server's legend. Intended for debugging LSP semantic-token providers.
+
+## Changes from upstream
+
+This fork tracks `isaacphi/main` and folds in fixes from contributor forks. Notable additions:
+
+- **Lazy LSP init** — `ServeStdio` starts immediately; tool handlers gate per-call on `waitForLSP` instead of stalling the MCP handshake while a slow LSP (Kotlin/Gradle, large rust-analyzer indexes) finishes startup. Adapted from upstream PR #127.
+- **Handshake hardening** — server-request handlers registered before `initialize` so `workspace/configuration` etc. don't see "method not found"; duplicate `initialized` notification removed; cleanup paths guarded with `sync.Once`.
+- **Preopen removal** — the old "open every matching file on `client/registerCapability`" goroutine is gone. None of gopls / typescript-language-server / clangd / civet-lsp / rust-analyzer actually needed it, and it was the source of issue #83 ("too many open files").
+- **Faster diagnostics** — wait for `textDocument/publishDiagnostics` instead of a fixed 3 s sleep; soft-fail on `-32601` from push-only LSPs.
+- **LSP-3.17 glob matching** — bespoke pattern matcher replaced with the gopls implementation (cached, supports `**`, `{}`, `[...]`, `[!...]`).
+- **File URIs** — built via `protocol.URIFromPath` everywhere; Windows paths no longer produce invalid `file://C:\...` URIs.
+- **Richer document_symbols** — advertise `HierarchicalDocumentSymbolSupport=true` so LSPs return nested children (struct fields, interface methods).
+- **C++ definition lookback** — capture `template<...>` and `[[attribute]]` lines preceding the LSP-reported symbol range.
+- **Tool annotations** — every tool tagged with title + ReadOnly / Destructive hints.
+- **New always-on tools** — `document_symbols`, `code_actions`, `format_document`, `semantic_tokens` (each registered only if the LSP advertises the capability).
+- **New flags** — `--disable-tools`, `--idle-timeout`, `--config` (see [Flags](#flags)).
+- **Extra language detection** — `.civet → civet`, `.hera → hera`, `.v → coq`.
+- **Integration-test matrix** — clangd and civet-lsp added to CI alongside go / rust / python / typescript; each language runs as a separate CI job.
 
 ## About
 
@@ -249,7 +305,7 @@ Setting the `LOG_LEVEL` environment variable to DEBUG enables verbose logging to
 
 There is a snapshot test suite that makes it a lot easier to try out changes to tools. These run actual language servers on mock workspaces and capture output and logs.
 
-You will need the language servers installed locally to run them. There are tests for go, rust, python, and typescript.
+You will need the language servers installed locally to run them. The matrix covers `gopls`, `rust-analyzer`, `basedpyright-langserver`, `typescript-language-server`, `clangd`, and `civet-lsp`. Each runs as its own CI job (see `.github/workflows/go.yml`).
 
 ```
 integrationtests/

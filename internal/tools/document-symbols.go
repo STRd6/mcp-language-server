@@ -19,7 +19,7 @@ func GetDocumentSymbols(ctx context.Context, client *lsp.Client, filePath string
 
 	params := protocol.DocumentSymbolParams{
 		TextDocument: protocol.TextDocumentIdentifier{
-			URI: protocol.DocumentUri("file://" + filePath),
+			URI: protocol.URIFromPath(filePath),
 		},
 	}
 

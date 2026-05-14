@@ -18,7 +18,7 @@ func GetSemanticTokens(ctx context.Context, client *lsp.Client, caps *protocol.S
 		return "", fmt.Errorf("could not open file: %v", err)
 	}
 
-	uri := protocol.DocumentUri("file://" + filePath)
+	uri := protocol.URIFromPath(filePath)
 	params := protocol.SemanticTokensParams{
 		TextDocument: protocol.TextDocumentIdentifier{URI: uri},
 	}

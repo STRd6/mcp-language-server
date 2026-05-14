@@ -15,7 +15,7 @@ func GetCodeActions(ctx context.Context, client *lsp.Client, filePath string, st
 		return "", fmt.Errorf("could not open file: %v", err)
 	}
 
-	uri := protocol.DocumentUri("file://" + filePath)
+	uri := protocol.URIFromPath(filePath)
 	diagnostics := client.GetFileDiagnostics(uri)
 
 	params := protocol.CodeActionParams{

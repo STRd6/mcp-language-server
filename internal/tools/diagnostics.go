@@ -27,7 +27,7 @@ func GetDiagnosticsForFile(ctx context.Context, client *lsp.Client, filePath str
 	}
 
 	// Convert the file path to URI format
-	uri := protocol.DocumentUri("file://" + filePath)
+	uri := protocol.URIFromPath(filePath)
 
 	// Wait for the LSP to publish diagnostics for this URI (push mode).
 	// 3s upper bound matches the previous hardcoded sleep; settle window

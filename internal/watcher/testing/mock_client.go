@@ -68,7 +68,7 @@ func (m *MockLSPClient) NotifyChange(ctx context.Context, path string) error {
 
 	// Record this as a change event
 	m.events = append(m.events, FileEvent{
-		URI:  "file://" + path,
+		URI:  string(protocol.URIFromPath(path)),
 		Type: protocol.FileChangeType(protocol.Changed),
 	})
 

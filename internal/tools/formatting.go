@@ -37,7 +37,7 @@ func FormatDocument(ctx context.Context, client *lsp.Client, filePath string, mo
 		return "", fmt.Errorf("could not open file: %v", err)
 	}
 
-	uri := protocol.DocumentUri("file://" + filePath)
+	uri := protocol.URIFromPath(filePath)
 
 	var edits []protocol.TextEdit
 

@@ -20,9 +20,20 @@ var (
 	osRename    = os.Rename
 )
 
+// uriToPath extracts a filesystem path from a DocumentUri. Tolerates raw
+// paths that historically reached this code via direct typecast — the LSP
+// edit pipeline used to do path -> DocumentUri without going through
+// URIFromPath, and DocumentUri.Path() panics on non-file URIs.
+func uriToPath(uri protocol.DocumentUri) string {
+	if strings.HasPrefix(string(uri), "file://") {
+		return uri.Path()
+	}
+	return string(uri)
+}
+
 // ApplyTextEdits applies a sequence of text edits to a file specified by URI
 func ApplyTextEdits(uri protocol.DocumentUri, edits []protocol.TextEdit) error {
-	path := uri.Path()
+	path := uriToPath(uri)
 
 	// Read the file content
 	content, err := osReadFile(path)
@@ -173,7 +184,7 @@ func ApplyTextEdit(lines []string, edit protocol.TextEdit, lineEnding string) ([
 // ApplyDocumentChange applies a DocumentChange (create/rename/delete operations)
 func ApplyDocumentChange(change protocol.DocumentChange) error {
 	if change.CreateFile != nil {
-		path := change.CreateFile.URI.Path()
+		path := uriToPath(change.CreateFile.URI)
 		if change.CreateFile.Options != nil {
 			if change.CreateFile.Options.Overwrite {
 				// Proceed with overwrite
@@ -189,7 +200,7 @@ func ApplyDocumentChange(change protocol.DocumentChange) error {
 	}
 
 	if change.DeleteFile != nil {
-		path := change.DeleteFile.URI.Path()
+		path := uriToPath(change.DeleteFile.URI)
 		if change.DeleteFile.Options != nil && change.DeleteFile.Options.Recursive {
 			if err := osRemoveAll(path); err != nil {
 				return fmt.Errorf("failed to delete directory recursively: %w", err)
@@ -202,8 +213,8 @@ func ApplyDocumentChange(change protocol.DocumentChange) error {
 	}
 
 	if change.RenameFile != nil {
-		oldPath := change.RenameFile.OldURI.Path()
-		newPath := change.RenameFile.NewURI.Path()
+		oldPath := uriToPath(change.RenameFile.OldURI)
+		newPath := uriToPath(change.RenameFile.NewURI)
 		if change.RenameFile.Options != nil {
 			if !change.RenameFile.Options.Overwrite {
 				if _, err := osStat(newPath); err == nil {

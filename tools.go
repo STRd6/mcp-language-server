@@ -16,7 +16,7 @@ import (
 // that arrive during LSP startup wait here instead of erroring or stalling
 // the whole MCP connection.
 func (s *mcpServer) addTool(tool mcp.Tool, handler server.ToolHandlerFunc) {
-	s.addTool(tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.mcpServer.AddTool(tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if err := s.waitForLSP(ctx); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("LSP not ready: %v", err)), nil
 		}

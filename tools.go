@@ -18,6 +18,8 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 	// rather than a capability.
 	applyTextEditTool := mcp.NewTool("edit_file",
 		mcp.WithDescription("Apply multiple text edits to a file."),
+		mcp.WithTitleAnnotation("Edit File"),
+		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithArray("edits",
 			mcp.Required(),
 			mcp.Description("List of edits to apply"),
@@ -102,6 +104,8 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 
 	getDiagnosticsTool := mcp.NewTool("diagnostics",
 		mcp.WithDescription("Get diagnostic information for a specific file from the language server."),
+		mcp.WithTitleAnnotation("Get Diagnostics"),
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithString("filePath",
 			mcp.Required(),
 			mcp.Description("The path to the file to get diagnostics for"),
@@ -163,6 +167,8 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 	if lsp.HasDefinitionSupport(caps) {
 		readDefinitionTool := mcp.NewTool("definition",
 			mcp.WithDescription("Read the source code definition of a symbol (function, type, constant, etc.) from the codebase. Returns the complete implementation code where the symbol is defined."),
+			mcp.WithTitleAnnotation("Go to Definition"),
+			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithString("symbolName",
 				mcp.Required(),
 				mcp.Description("The name of the symbol whose definition you want to find (e.g. 'mypackage.MyFunction', 'MyType.MyMethod')"),
@@ -190,6 +196,8 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 	if lsp.HasReferencesSupport(caps) {
 		findReferencesTool := mcp.NewTool("references",
 			mcp.WithDescription("Find all usages and references of a symbol throughout the codebase. Returns a list of all files and locations where the symbol appears."),
+			mcp.WithTitleAnnotation("Find References"),
+			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithString("symbolName",
 				mcp.Required(),
 				mcp.Description("The name of the symbol to search for (e.g. 'mypackage.MyFunction', 'MyType')"),
@@ -217,6 +225,8 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 	if lsp.HasHoverSupport(caps) {
 		hoverTool := mcp.NewTool("hover",
 			mcp.WithDescription("Get hover information (type, documentation) for a symbol at the specified position."),
+			mcp.WithTitleAnnotation("Hover Information"),
+			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithString("filePath",
 				mcp.Required(),
 				mcp.Description("The path to the file to get hover information for"),
@@ -271,6 +281,8 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 	if lsp.HasRenameSupport(caps) {
 		renameSymbolTool := mcp.NewTool("rename_symbol",
 			mcp.WithDescription("Rename a symbol (variable, function, class, etc.) at the specified position and update all references throughout the codebase."),
+			mcp.WithTitleAnnotation("Rename Symbol"),
+			mcp.WithDestructiveHintAnnotation(true),
 			mcp.WithString("filePath",
 				mcp.Required(),
 				mcp.Description("The path to the file containing the symbol to rename"),
@@ -334,6 +346,8 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 	if lsp.HasDocumentSymbolSupport(caps) {
 		documentSymbolsTool := mcp.NewTool("document_symbols",
 			mcp.WithDescription("Get the hierarchical symbol outline of a file (classes, functions, methods, etc.)"),
+			mcp.WithTitleAnnotation("Document Symbols"),
+			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithString("filePath",
 				mcp.Required(),
 				mcp.Description("Path to the file to get symbols for"),
@@ -361,6 +375,8 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 	if lsp.HasCodeActionSupport(caps) {
 		codeActionsTool := mcp.NewTool("code_actions",
 			mcp.WithDescription("Get available code actions (quick fixes, refactorings, source actions) for a range in a file."),
+			mcp.WithTitleAnnotation("Code Actions"),
+			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithString("filePath",
 				mcp.Required(),
 				mcp.Description("Path to the file"),
@@ -432,6 +448,8 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 	if lsp.HasFormattingSupport(caps) {
 		formatDocumentTool := mcp.NewTool("format_document",
 			mcp.WithDescription("Format a document (or a range within it) using the LSP server's formatter. Applies the resulting edits to disk."),
+			mcp.WithTitleAnnotation("Format Document"),
+			mcp.WithDestructiveHintAnnotation(true),
 			mcp.WithString("filePath",
 				mcp.Required(),
 				mcp.Description("Path to the file to format"),
@@ -498,6 +516,8 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 	if lsp.HasSemanticTokensSupport(caps) {
 		semanticTokensTool := mcp.NewTool("semantic_tokens",
 			mcp.WithDescription("Dump the full semantic-tokens response from the LSP server, decoded with the server's token-type / token-modifier legend. Intended for debugging LSP semantic token providers."),
+			mcp.WithTitleAnnotation("Semantic Tokens"),
+			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithString("filePath",
 				mcp.Required(),
 				mcp.Description("Path to the file to inspect"),

@@ -17,6 +17,7 @@ import (
 	"github.com/isaacphi/mcp-language-server/internal/lsp"
 	"github.com/isaacphi/mcp-language-server/internal/protocol"
 	"github.com/isaacphi/mcp-language-server/internal/watcher"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
@@ -30,6 +31,8 @@ type config struct {
 
 	disabledToolStr string
 	disabledTools   []string
+
+	idleTimeout time.Duration
 }
 
 type mcpServer struct {
@@ -47,6 +50,7 @@ func parseConfig() (*config, error) {
 	flag.StringVar(&cfg.workspaceDir, "workspace", "", "Path to workspace directory")
 	flag.StringVar(&cfg.lspCommand, "lsp", "", "LSP command to run (args should be passed after --)")
 	flag.StringVar(&cfg.disabledToolStr, "disable-tools", "", "Comma-separated list of tools to disable")
+	flag.DurationVar(&cfg.idleTimeout, "idle-timeout", 0, "Shut down after this duration of no MCP traffic (e.g. 10m); 0 disables")
 	flag.Parse()
 
 	// Get remaining args after -- as LSP arguments
@@ -116,16 +120,32 @@ func (s *mcpServer) initializeLSP() error {
 	return client.WaitForServerReady(s.ctx)
 }
 
-func (s *mcpServer) start() error {
+func (s *mcpServer) start(onIdle func()) error {
 	if err := s.initializeLSP(); err != nil {
 		return err
+	}
+
+	opts := []server.ServerOption{
+		server.WithLogging(),
+		server.WithRecovery(),
+	}
+	if s.config.idleTimeout > 0 && onIdle != nil {
+		timer := time.AfterFunc(s.config.idleTimeout, func() {
+			coreLogger.Info("Idle timeout (%s) reached, initiating shutdown", s.config.idleTimeout)
+			onIdle()
+		})
+		hooks := &server.Hooks{}
+		hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
+			timer.Reset(s.config.idleTimeout)
+		})
+		opts = append(opts, server.WithHooks(hooks))
+		coreLogger.Info("Idle timeout armed: %s", s.config.idleTimeout)
 	}
 
 	s.mcpServer = server.NewMCPServer(
 		"MCP Language Server",
 		"v0.0.2",
-		server.WithLogging(),
-		server.WithRecovery(),
+		opts...,
 	)
 
 	err := s.registerTools(s.capabilities)
@@ -192,7 +212,7 @@ func main() {
 		}
 	}()
 
-	if err := server.start(); err != nil {
+	if err := server.start(func() { cleanup(server, done) }); err != nil {
 		coreLogger.Error("Server error: %v", err)
 		cleanup(server, done)
 		os.Exit(1)

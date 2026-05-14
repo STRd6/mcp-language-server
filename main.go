@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,6 +26,9 @@ type config struct {
 	workspaceDir string
 	lspCommand   string
 	lspArgs      []string
+
+	disabledToolStr string
+	disabledTools   []string
 }
 
 type mcpServer struct {
@@ -41,10 +45,15 @@ func parseConfig() (*config, error) {
 	cfg := &config{}
 	flag.StringVar(&cfg.workspaceDir, "workspace", "", "Path to workspace directory")
 	flag.StringVar(&cfg.lspCommand, "lsp", "", "LSP command to run (args should be passed after --)")
+	flag.StringVar(&cfg.disabledToolStr, "disable-tools", "", "Comma-separated list of tools to disable")
 	flag.Parse()
 
 	// Get remaining args after -- as LSP arguments
 	cfg.lspArgs = flag.Args()
+
+	if cfg.disabledToolStr != "" {
+		cfg.disabledTools = strings.Split(cfg.disabledToolStr, ",")
+	}
 
 	// Validate workspace directory
 	if cfg.workspaceDir == "" {

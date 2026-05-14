@@ -522,6 +522,11 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 		coreLogger.Info("Skipping 'semantic_tokens' tool — LSP lacks semanticTokens capability")
 	}
 
+	if len(s.config.disabledTools) > 0 {
+		s.mcpServer.DeleteTools(s.config.disabledTools...)
+		coreLogger.Info("Disabled tools: %v", s.config.disabledTools)
+	}
+
 	coreLogger.Info("Successfully registered MCP tools")
 	return nil
 }

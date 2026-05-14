@@ -45,30 +45,27 @@ jobs:
       - name: Run code quality checks
         run: just check
 
-  go-integration-tests:
-    name: Go Integration Tests
+  integration-tests:
+    name: ${{ matrix.display }} Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.25"
-          check-latest: true
-          cache: true
-
-      - name: Install gopls
-        run: go install golang.org/x/tools/gopls@latest
-
-      - name: Run Go integration tests
-        run: go test ./integrationtests/tests/go/...
-
-  python-integration-tests:
-    name: Python Integration Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lsp: go
+            display: Go
+            install: go install golang.org/x/tools/gopls@latest
+          - lsp: python
+            display: Python
+            install: npm install -g pyright
+          - lsp: typescript
+            display: TypeScript
+            install: npm install -g typescript typescript-language-server
+          - lsp: rust
+            display: Rust
+          - lsp: clangd
+            display: Clangd
     steps:
       - uses: actions/checkout@v6
 
@@ -80,99 +77,35 @@ jobs:
           cache: true
 
       - name: Set up Python
+        if: matrix.lsp == 'python'
         uses: actions/setup-python@v6
         with:
           python-version: "3.10"
 
-      - name: Install pyright
-        run: npm install -g pyright
-
-      - name: Run Python integration tests
-        run: go test ./integrationtests/tests/python/...
-
-  rust-integration-tests:
-    name: Rust Integration Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.25"
-          check-latest: true
-          cache: true
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rust-src, rust-analyzer
-
-      - run: rustc --version
-      - run: rust-analyzer --version
-
-      - name: Run Rust integration tests
-        run: go test ./integrationtests/tests/rust/...
-
-  typescript-integration-tests:
-    name: TypeScript Integration Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.25"
-          check-latest: true
-          cache: true
-
       - name: Set up Node.js
+        if: matrix.lsp == 'typescript'
         uses: actions/setup-node@v6
         with:
           node-version: "24"
 
-      - name: Install typescript-language-server
-        run: npm install -g typescript typescript-language-server
-
-      - name: Run TypeScript integration tests
-        run: go test ./integrationtests/tests/typescript/...
-
-  clangd-integration-tests:
-    name: Clangd Integration Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - name: Set up Rust
+        if: matrix.lsp == 'rust'
+        uses: dtolnay/rust-toolchain@stable
         with:
-          go-version: "1.25"
-          check-latest: true
-          cache: true
+          components: rust-src, rust-analyzer
 
-      - name: Install LLVM, Clang and bear
+      - name: Install clangd toolchain
+        if: matrix.lsp == 'clangd'
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-16 llvm-16 clangd-16 bear
-
-      - name: Verify Clangd Installation
-        run: |
-          sudo ln -s /usr/bin/clangd-16 /usr/bin/clangd
-          clangd-16 --version
+          sudo ln -sf /usr/bin/clangd-16 /usr/bin/clangd
           clangd --version
-      
-      - name: Create compile commands
-        run: |
-          cd integrationtests/workspaces/clangd
-          bear -- make
-          cd ../../../..
+          cd integrationtests/workspaces/clangd && bear -- make
 
-      # -p 1 serializes clangd package tests: each spawns clangd against
-      # a workspace whose compile_commands.json still points to the shared
-      # source workspace, so parallel runs race on clangd's .cache writes.
-      - name: Run Clangd integration tests
-        run: go test -p 1 ./integrationtests/tests/clangd/...
+      - name: Install ${{ matrix.display }} LSP
+        if: matrix.install != ''
+        run: ${{ matrix.install }}
+
+      - name: Run ${{ matrix.display }} integration tests
+        run: go test ./integrationtests/tests/${{ matrix.lsp }}/...

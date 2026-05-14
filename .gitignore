@@ -11,6 +11,9 @@ integrationtests/workspaces/clangd/program
 integrationtests/workspaces/clangd/.cache
 
 
+# Ad-hoc manual probes (per-developer, hardcoded paths)
+integrationtests/scratch/
+
 # Temporary files
 *~
 

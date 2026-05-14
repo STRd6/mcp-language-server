@@ -16,6 +16,8 @@ func DetectLanguageID(uri string) protocol.LanguageKind {
 		return protocol.LangWindowsBat
 	case ".bib", ".bibtex":
 		return protocol.LangBibTeX
+	case ".civet":
+		return protocol.LanguageKind("civet")
 	case ".clj":
 		return protocol.LangClojure
 	case ".coffee":

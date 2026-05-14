@@ -243,16 +243,11 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string) (
 		},
 	}
 
-	var result protocol.InitializeResult
-	if err := c.Call(ctx, "initialize", initParams, &result); err != nil {
-		return nil, fmt.Errorf("initialize failed: %w", err)
-	}
-
-	if err := c.Notify(ctx, "initialized", struct{}{}); err != nil {
-		return nil, fmt.Errorf("initialized notification failed: %w", err)
-	}
-
-	// Register handlers
+	// Register handlers BEFORE sending initialize so any server-initiated
+	// requests (e.g. workspace/configuration) that arrive during or
+	// immediately after the handshake reach a registered handler instead
+	// of getting a "method not found" reply that puts strict servers
+	// (Kotlin LSP, async-lsp-based servers) into a broken state.
 	c.RegisterServerRequestHandler("workspace/applyEdit", HandleApplyEdit)
 	c.RegisterServerRequestHandler("workspace/configuration", HandleWorkspaceConfiguration)
 	c.RegisterServerRequestHandler("client/registerCapability", HandleRegisterCapability)
@@ -263,9 +258,13 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string) (
 	c.RegisterNotificationHandler("$/progress",
 		func(params json.RawMessage) { c.handleProgress(params) })
 
-	// Notify the LSP server
-	err := c.Initialized(ctx, protocol.InitializedParams{})
-	if err != nil {
+	var result protocol.InitializeResult
+	if err := c.Call(ctx, "initialize", initParams, &result); err != nil {
+		return nil, fmt.Errorf("initialize failed: %w", err)
+	}
+
+	// Single initialized notification (no duplicate Notify call).
+	if err := c.Initialized(ctx, protocol.InitializedParams{}); err != nil {
 		return nil, fmt.Errorf("initialization failed: %w", err)
 	}
 

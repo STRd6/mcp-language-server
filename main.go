@@ -43,6 +43,13 @@ type mcpServer struct {
 	cancelFunc       context.CancelFunc
 	workspaceWatcher *watcher.WorkspaceWatcher
 	capabilities     *protocol.ServerCapabilities
+
+	// lspReady is closed once initializeLSP returns (either success or
+	// failure). Tool handlers gate on this so that ServeStdio can start
+	// answering MCP protocol traffic immediately, before slow LSPs
+	// (Kotlin/Gradle ~95s) finish their handshake.
+	lspReady   chan struct{}
+	lspInitErr error
 }
 
 func parseConfig() (*config, error) {
@@ -93,7 +100,19 @@ func newServer(config *config) (*mcpServer, error) {
 		config:     *config,
 		ctx:        ctx,
 		cancelFunc: cancel,
+		lspReady:   make(chan struct{}),
 	}, nil
+}
+
+// waitForLSP blocks until the LSP handshake has completed or ctx is done.
+// Returns the LSP initialization error (if any) so handlers can fail fast.
+func (s *mcpServer) waitForLSP(ctx context.Context) error {
+	select {
+	case <-s.lspReady:
+		return s.lspInitErr
+	case <-ctx.Done():
+		return fmt.Errorf("context cancelled while waiting for LSP: %w", ctx.Err())
+	}
 }
 
 func (s *mcpServer) initializeLSP() error {
@@ -121,10 +140,6 @@ func (s *mcpServer) initializeLSP() error {
 }
 
 func (s *mcpServer) start(onIdle func()) error {
-	if err := s.initializeLSP(); err != nil {
-		return err
-	}
-
 	opts := []server.ServerOption{
 		server.WithLogging(),
 		server.WithRecovery(),
@@ -148,10 +163,26 @@ func (s *mcpServer) start(onIdle func()) error {
 		opts...,
 	)
 
-	err := s.registerTools(s.capabilities)
-	if err != nil {
-		return fmt.Errorf("tool registration failed: %v", err)
-	}
+	// Always-on tools (edit_file, diagnostics) register immediately so the
+	// MCP client can complete its handshake and call tools/list without
+	// waiting for a slow LSP. Capability-gated tools are registered from
+	// the background goroutine once we know what the LSP supports;
+	// mcp-go emits tools/list_changed when they appear.
+	s.registerAlwaysOnTools()
+
+	// Initialize LSP in the background. Tool handlers gate on waitForLSP,
+	// so they block per-call rather than the whole MCP handshake stalling.
+	go func() {
+		err := s.initializeLSP()
+		s.lspInitErr = err
+		if err != nil {
+			coreLogger.Error("LSP initialization failed: %v", err)
+		} else {
+			coreLogger.Info("LSP initialized successfully")
+			s.registerCapabilityTools(s.capabilities)
+		}
+		close(s.lspReady)
+	}()
 
 	return server.ServeStdio(s.mcpServer)
 }

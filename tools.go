@@ -8,10 +8,27 @@ import (
 	"github.com/isaacphi/mcp-language-server/internal/protocol"
 	"github.com/isaacphi/mcp-language-server/internal/tools"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
-func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
-	coreLogger.Debug("Registering MCP tools")
+// addTool registers a tool whose handler blocks on waitForLSP. ServeStdio
+// starts before the LSP handshake completes (see start()), so tool calls
+// that arrive during LSP startup wait here instead of erroring or stalling
+// the whole MCP connection.
+func (s *mcpServer) addTool(tool mcp.Tool, handler server.ToolHandlerFunc) {
+	s.addTool(tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if err := s.waitForLSP(ctx); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("LSP not ready: %v", err)), nil
+		}
+		return handler(ctx, request)
+	})
+}
+
+// registerAlwaysOnTools registers edit_file and diagnostics, which don't
+// depend on the LSP advertising any specific capability. Called before
+// ServeStdio so tools/list responses include them immediately.
+func (s *mcpServer) registerAlwaysOnTools() {
+	coreLogger.Debug("Registering always-on MCP tools")
 
 	// edit_file and diagnostics are always registered: edit_file requires only
 	// TextDocumentSync (every LSP), and diagnostics rides on push notifications
@@ -48,7 +65,7 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 		),
 	)
 
-	s.mcpServer.AddTool(applyTextEditTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.addTool(applyTextEditTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Extract arguments
 		filePath, ok := request.Params.Arguments["filePath"].(string)
 		if !ok {
@@ -120,7 +137,7 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 		),
 	)
 
-	s.mcpServer.AddTool(getDiagnosticsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.addTool(getDiagnosticsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Extract arguments
 		filePath, ok := request.Params.Arguments["filePath"].(string)
 		if !ok {
@@ -146,11 +163,18 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 		return mcp.NewToolResultText(text), nil
 	})
 
+	coreLogger.Debug("Always-on MCP tools registered")
+}
+
+// registerCapabilityTools registers tools that are gated on what the LSP
+// advertised in its initialize response. Called from the background LSP
+// init goroutine after the handshake completes; mcp-go emits
+// tools/list_changed so connected clients pick the new tools up live.
+func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 	// Nil capabilities means the LSP didn't return anything we could parse.
-	// Fall back to just the always-on tools above.
 	if caps == nil {
-		coreLogger.Warn("No server capabilities — registered only edit_file and diagnostics")
-		return nil
+		coreLogger.Warn("No server capabilities — skipping capability-gated tool registration")
+		return
 	}
 
 	coreLogger.Info("LSP capabilities: definition=%v references=%v hover=%v rename=%v documentSymbol=%v codeAction=%v formatting=%v semanticTokens=%v",
@@ -175,7 +199,7 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 			),
 		)
 
-		s.mcpServer.AddTool(readDefinitionTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		s.addTool(readDefinitionTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			symbolName, ok := request.Params.Arguments["symbolName"].(string)
 			if !ok {
 				return mcp.NewToolResultError("symbolName must be a string"), nil
@@ -204,7 +228,7 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 			),
 		)
 
-		s.mcpServer.AddTool(findReferencesTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		s.addTool(findReferencesTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			symbolName, ok := request.Params.Arguments["symbolName"].(string)
 			if !ok {
 				return mcp.NewToolResultError("symbolName must be a string"), nil
@@ -241,7 +265,7 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 			),
 		)
 
-		s.mcpServer.AddTool(hoverTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		s.addTool(hoverTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			filePath, ok := request.Params.Arguments["filePath"].(string)
 			if !ok {
 				return mcp.NewToolResultError("filePath must be a string"), nil
@@ -301,7 +325,7 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 			),
 		)
 
-		s.mcpServer.AddTool(renameSymbolTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		s.addTool(renameSymbolTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			filePath, ok := request.Params.Arguments["filePath"].(string)
 			if !ok {
 				return mcp.NewToolResultError("filePath must be a string"), nil
@@ -354,7 +378,7 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 			),
 		)
 
-		s.mcpServer.AddTool(documentSymbolsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		s.addTool(documentSymbolsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			filePath, ok := request.Params.Arguments["filePath"].(string)
 			if !ok {
 				return mcp.NewToolResultError("filePath must be a string"), nil
@@ -399,7 +423,7 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 			),
 		)
 
-		s.mcpServer.AddTool(codeActionsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		s.addTool(codeActionsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			filePath, ok := request.Params.Arguments["filePath"].(string)
 			if !ok {
 				return mcp.NewToolResultError("filePath must be a string"), nil
@@ -475,7 +499,7 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 			),
 		)
 
-		s.mcpServer.AddTool(formatDocumentTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		s.addTool(formatDocumentTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			filePath, ok := request.Params.Arguments["filePath"].(string)
 			if !ok {
 				return mcp.NewToolResultError("filePath must be a string"), nil
@@ -524,7 +548,7 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 			),
 		)
 
-		s.mcpServer.AddTool(semanticTokensTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		s.addTool(semanticTokensTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			filePath, ok := request.Params.Arguments["filePath"].(string)
 			if !ok {
 				return mcp.NewToolResultError("filePath must be a string"), nil
@@ -547,6 +571,5 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 		coreLogger.Info("Disabled tools: %v", s.config.disabledTools)
 	}
 
-	coreLogger.Info("Successfully registered MCP tools")
-	return nil
+	coreLogger.Info("Capability-gated MCP tools registered")
 }

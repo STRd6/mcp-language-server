@@ -20,13 +20,22 @@ generate:
 
 # Run code audit checks
 check:
+  #!/usr/bin/env bash
+  # gopls check exits 0 even when it reports diagnostics; fail the recipe
+  # ourselves below if any output is produced. 2>&1 covers gopls versions
+  # that write findings to stderr.
+  set -euo pipefail
   gofmt -l .
   test -z "$(gofmt -l .)"
   go tool staticcheck ./...
   go tool errcheck ./...
-  find . -path "./integrationtests/workspaces" -prune -o \
-    -path "./integrationtests/test-output" -prune -o \
-    -name "*.go" -print | xargs gopls check
+  out="$(find . -path './integrationtests/workspaces' -prune -o \
+    -path './integrationtests/test-output' -prune -o \
+    -name '*.go' -print | xargs gopls check 2>&1)"
+  if [ -n "$out" ]; then
+    printf '%s\n' "$out"
+    exit 1
+  fi
   go tool govulncheck ./...
 
 # Run tests

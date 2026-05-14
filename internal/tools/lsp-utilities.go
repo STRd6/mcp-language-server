@@ -77,6 +77,20 @@ func GetFullDefinition(ctx context.Context, client *lsp.Client, startLocation pr
 		// Extend start to beginning of line
 		symbolRange.Start.Character = 0
 
+		// For C++ and similar languages, the LSP-reported symbol range starts
+		// at the identifier itself; preceding template<...> declarations and
+		// [[attribute]] specifiers belong to the definition but live on prior
+		// lines. Scan up to 5 lines back; if any look like a template or
+		// attribute declaration, extend the start there so the captured
+		// definition is complete.
+		originalStartLine := int(symbolRange.Start.Line)
+		for lineNum := originalStartLine - 1; lineNum >= 0 && lineNum >= originalStartLine-5; lineNum-- {
+			trimmed := strings.TrimSpace(lines[lineNum])
+			if strings.HasPrefix(trimmed, "template") || strings.HasPrefix(trimmed, "[[") {
+				symbolRange.Start.Line = uint32(lineNum)
+			}
+		}
+
 		// Get the line at the end of the range
 		if int(symbolRange.End.Line) >= len(lines) {
 			return "", protocol.Location{}, fmt.Errorf("line number out of range")

@@ -4,6 +4,8 @@ mcp-language-server
 # Test output
 test-output/
 *.diff
+cover.out
+cover.html
 integrationtests/workspaces/clangd/compile_commands.json
 integrationtests/workspaces/clangd/src/*.o
 integrationtests/workspaces/clangd/clean_program

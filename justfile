@@ -45,3 +45,22 @@ test:
 # Update snapshot tests
 snapshot:
   UPDATE_SNAPSHOTS=true go test ./integrationtests/...
+
+# Measure test coverage of production packages
+coverage:
+  #!/usr/bin/env bash
+  # -coverpkg points at internal/cmd so integration tests, which live in a
+  # separate package tree, still count toward the production-code numbers.
+  # Print the summary even if some packages fail (e.g. a missing LSP) so we
+  # still get a coverage number out of partial runs.
+  set -uo pipefail
+  go test -coverpkg=./internal/...,./cmd/... -coverprofile=cover.out ./...
+  rc=$?
+  echo
+  if [ -s cover.out ]; then
+    go tool cover -func=cover.out | tail -1
+    echo
+    echo "Per-function breakdown: go tool cover -func=cover.out"
+    echo "HTML report:            go tool cover -html=cover.out -o cover.html"
+  fi
+  exit $rc

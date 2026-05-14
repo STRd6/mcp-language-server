@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -202,7 +203,13 @@ func main() {
 	os.Exit(0)
 }
 
+var cleanupOnce sync.Once
+
 func cleanup(s *mcpServer, done chan struct{}) {
+	cleanupOnce.Do(func() { runCleanup(s, done) })
+}
+
+func runCleanup(s *mcpServer, done chan struct{}) {
 	coreLogger.Info("Cleanup initiated for PID: %d", os.Getpid())
 
 	// Create a context with timeout for shutdown operations

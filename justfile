@@ -50,14 +50,22 @@ snapshot:
 coverage:
   #!/usr/bin/env bash
   # -coverpkg points at internal/cmd so integration tests, which live in a
-  # separate package tree, still count toward the production-code numbers.
-  # Print the summary even if some packages fail (e.g. a missing LSP) so we
-  # still get a coverage number out of partial runs.
+  # separate package tree, still count toward production-code numbers.
+  # Generated files (detected via "DO NOT EDIT" / "Generated code" markers)
+  # are stripped from the profile so the headline reflects testable code.
+  # Summary is printed even if some packages fail (e.g. missing LSP).
   set -uo pipefail
   go test -coverpkg=./internal/...,./cmd/... -coverprofile=cover.out ./...
   rc=$?
   echo
   if [ -s cover.out ]; then
+    gen=$(grep -rlE "^// Code generated|^// Generated code|DO NOT EDIT" \
+      --include='*.go' internal cmd 2>/dev/null | paste -sd'|' -)
+    if [ -n "$gen" ]; then
+      grep -vE "($gen):" cover.out > cover.out.tmp && mv cover.out.tmp cover.out
+      echo "Excluded generated files: $(echo "$gen" | tr '|' ' ')"
+      echo
+    fi
     go tool cover -func=cover.out | tail -1
     echo
     echo "Per-function breakdown: go tool cover -func=cover.out"

@@ -37,6 +37,8 @@ type config struct {
 
 	configFile string
 	lspConfig  map[string]any
+
+	lspInitAsync bool
 }
 
 type mcpServer struct {
@@ -49,9 +51,11 @@ type mcpServer struct {
 	capabilities     *protocol.ServerCapabilities
 
 	// lspReady is closed once initializeLSP returns (either success or
-	// failure). Tool handlers gate on this so that ServeStdio can start
-	// answering MCP protocol traffic immediately, before slow LSPs
-	// (Kotlin/Gradle ~95s) finish their handshake.
+	// failure). Tool handlers gate on this so that, under --lsp-init-async,
+	// ServeStdio can start answering MCP protocol traffic immediately
+	// before slow LSPs (Kotlin/Gradle ~95s) finish their handshake. Under
+	// the default sync path lspReady is closed before ServeStdio starts,
+	// so waitForLSP returns immediately.
 	lspReady   chan struct{}
 	lspInitErr error
 }
@@ -63,6 +67,7 @@ func parseConfig() (*config, error) {
 	flag.StringVar(&cfg.disabledToolStr, "disable-tools", "", "Comma-separated list of tools to disable")
 	flag.DurationVar(&cfg.idleTimeout, "idle-timeout", 0, "Shut down after this duration of no MCP traffic (e.g. 10m); 0 disables")
 	flag.StringVar(&cfg.configFile, "config", "", "Path to a JSON file whose keys are LSP binary names and values are passed as initializationOptions for that LSP (see README)")
+	flag.BoolVar(&cfg.lspInitAsync, "lsp-init-async", false, "Initialize the LSP in a background goroutine so ServeStdio starts immediately. Capability-gated tools then register after the handshake via tools/list_changed (clients must honor it). Default: synchronous init, all tools available before ServeStdio.")
 	flag.Parse()
 
 	// Get remaining args after -- as LSP arguments
@@ -200,26 +205,41 @@ func (s *mcpServer) start(onIdle func()) error {
 		opts...,
 	)
 
-	// Always-on tools (edit_file, diagnostics) register immediately so the
-	// MCP client can complete its handshake and call tools/list without
-	// waiting for a slow LSP. Capability-gated tools are registered from
-	// the background goroutine once we know what the LSP supports;
-	// mcp-go emits tools/list_changed when they appear.
 	s.registerAlwaysOnTools()
 
-	// Initialize LSP in the background. Tool handlers gate on waitForLSP,
-	// so they block per-call rather than the whole MCP handshake stalling.
-	go func() {
-		err := s.initializeLSP()
+	if s.config.lspInitAsync {
+		// Async path: ServeStdio starts immediately, capability-gated tools
+		// register from the background goroutine once the LSP handshake
+		// completes. mcp-go emits tools/list_changed so clients that honor
+		// it pick the new tools up live. Clients that don't (e.g. clients
+		// that cache tools/list and never refresh) will only ever see the
+		// always-on tools — use the default sync path for those.
+		go func() {
+			err := s.initializeLSP()
+			s.lspInitErr = err
+			if err != nil {
+				coreLogger.Error("LSP initialization failed: %v", err)
+			} else {
+				coreLogger.Info("LSP initialized successfully")
+				s.registerCapabilityTools(s.capabilities)
+			}
+			close(s.lspReady)
+		}()
+		return server.ServeStdio(s.mcpServer)
+	}
+
+	// Sync path (default): finish the LSP handshake and register every
+	// capability-gated tool before ServeStdio so the first tools/list
+	// response is the complete set. Fail fast if the LSP can't init,
+	// since we have no useful work to do without it.
+	if err := s.initializeLSP(); err != nil {
 		s.lspInitErr = err
-		if err != nil {
-			coreLogger.Error("LSP initialization failed: %v", err)
-		} else {
-			coreLogger.Info("LSP initialized successfully")
-			s.registerCapabilityTools(s.capabilities)
-		}
 		close(s.lspReady)
-	}()
+		return fmt.Errorf("LSP initialization failed: %v", err)
+	}
+	coreLogger.Info("LSP initialized successfully")
+	s.registerCapabilityTools(s.capabilities)
+	close(s.lspReady)
 
 	return server.ServeStdio(s.mcpServer)
 }

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/isaacphi/mcp-language-server/internal/lsp"
-	"github.com/isaacphi/mcp-language-server/internal/protocol"
+	"github.com/STRd6/mcp-language-server/internal/lsp"
+	"github.com/STRd6/mcp-language-server/internal/protocol"
 )
 
 // GetCodeActions returns available code actions for a range in a file.

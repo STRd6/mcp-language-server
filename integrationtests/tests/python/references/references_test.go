@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/isaacphi/mcp-language-server/integrationtests/tests/common"
-	"github.com/isaacphi/mcp-language-server/integrationtests/tests/python/internal"
-	"github.com/isaacphi/mcp-language-server/internal/tools"
+	"github.com/STRd6/mcp-language-server/integrationtests/tests/common"
+	"github.com/STRd6/mcp-language-server/integrationtests/tests/python/internal"
+	"github.com/STRd6/mcp-language-server/internal/tools"
 )
 
 // TestFindReferences tests the FindReferences tool with Python symbols

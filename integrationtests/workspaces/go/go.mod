@@ -1,4 +1,4 @@
-module github.com/isaacphi/mcp-language-server/integrationtests/test-output/go/workspace
+module github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace
 
 go 1.20
 

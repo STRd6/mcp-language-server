@@ -3,7 +3,7 @@ package lsp
 import (
 	"testing"
 
-	"github.com/isaacphi/mcp-language-server/internal/protocol"
+	"github.com/STRd6/mcp-language-server/internal/protocol"
 )
 
 // orPresent returns a non-nil Or_* style provider with the given Value.

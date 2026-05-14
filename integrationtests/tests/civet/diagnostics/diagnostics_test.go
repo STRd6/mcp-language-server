@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/isaacphi/mcp-language-server/integrationtests/tests/civet/internal"
-	"github.com/isaacphi/mcp-language-server/internal/tools"
+	"github.com/STRd6/mcp-language-server/integrationtests/tests/civet/internal"
+	"github.com/STRd6/mcp-language-server/internal/tools"
 )
 
 // TestDiagnostics covers civet-lsp's push-only diagnostics path. Civet

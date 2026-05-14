@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/isaacphi/mcp-language-server/integrationtests/tests/common"
-	"github.com/isaacphi/mcp-language-server/integrationtests/tests/go/internal"
-	"github.com/isaacphi/mcp-language-server/internal/tools"
+	"github.com/STRd6/mcp-language-server/integrationtests/tests/common"
+	"github.com/STRd6/mcp-language-server/integrationtests/tests/go/internal"
+	"github.com/STRd6/mcp-language-server/internal/tools"
 )
 
 // TestRenameSymbol tests the RenameSymbol functionality with the Go language server

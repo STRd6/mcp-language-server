@@ -10,7 +10,7 @@ package glob_test
 import (
 	"testing"
 
-	"github.com/isaacphi/mcp-language-server/internal/glob"
+	"github.com/STRd6/mcp-language-server/internal/glob"
 )
 
 func TestParseErrors(t *testing.T) {

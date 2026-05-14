@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/isaacphi/mcp-language-server/integrationtests/tests/civet/internal"
-	"github.com/isaacphi/mcp-language-server/integrationtests/tests/common"
-	"github.com/isaacphi/mcp-language-server/internal/lsp"
-	"github.com/isaacphi/mcp-language-server/internal/tools"
+	"github.com/STRd6/mcp-language-server/integrationtests/tests/civet/internal"
+	"github.com/STRd6/mcp-language-server/integrationtests/tests/common"
+	"github.com/STRd6/mcp-language-server/internal/lsp"
+	"github.com/STRd6/mcp-language-server/internal/tools"
 )
 
 // TestSemanticTokens exercises civet-lsp's semanticTokensProvider via

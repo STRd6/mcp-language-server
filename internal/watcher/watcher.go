@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/STRd6/mcp-language-server/internal/glob"
+	"github.com/STRd6/mcp-language-server/internal/logging"
+	"github.com/STRd6/mcp-language-server/internal/lsp"
+	"github.com/STRd6/mcp-language-server/internal/protocol"
 	"github.com/fsnotify/fsnotify"
-	"github.com/isaacphi/mcp-language-server/internal/glob"
-	"github.com/isaacphi/mcp-language-server/internal/logging"
-	"github.com/isaacphi/mcp-language-server/internal/lsp"
-	"github.com/isaacphi/mcp-language-server/internal/protocol"
 )
 
 // Create a logger for the watcher component

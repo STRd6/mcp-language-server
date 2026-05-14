@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/isaacphi/mcp-language-server/internal/logging"
+	"github.com/STRd6/mcp-language-server/internal/logging"
 )
 
 // Create component-specific loggers

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/isaacphi/mcp-language-server/integrationtests/tests/civet/internal"
-	"github.com/isaacphi/mcp-language-server/integrationtests/tests/common"
-	"github.com/isaacphi/mcp-language-server/internal/tools"
+	"github.com/STRd6/mcp-language-server/integrationtests/tests/civet/internal"
+	"github.com/STRd6/mcp-language-server/integrationtests/tests/common"
+	"github.com/STRd6/mcp-language-server/internal/tools"
 )
 
 // TestHover exercises civet-lsp's hoverProvider against a fixture in

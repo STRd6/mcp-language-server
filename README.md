@@ -3,11 +3,11 @@
 [![CI](https://github.com/STRd6/mcp-language-server/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/STRd6/mcp-language-server/actions/workflows/go.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/STRd6/mcp-language-server)](https://goreportcard.com/report/github.com/STRd6/mcp-language-server)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/STRd6/mcp-language-server)](https://github.com/STRd6/mcp-language-server/blob/main/go.mod)
-[![GoDoc](https://pkg.go.dev/badge/github.com/isaacphi/mcp-language-server)](https://pkg.go.dev/github.com/isaacphi/mcp-language-server)
+[![GoDoc](https://pkg.go.dev/badge/github.com/STRd6/mcp-language-server)](https://pkg.go.dev/github.com/STRd6/mcp-language-server)
 
 This is an [MCP](https://modelcontextprotocol.io/introduction) server that runs and exposes a [language server](https://microsoft.github.io/language-server-protocol/) to LLMs. Not a language server for MCP, whatever that would be.
 
-> This is a downstream fork of [isaacphi/mcp-language-server](https://github.com/isaacphi/mcp-language-server) with a few extra tools, flags, and stability fixes. See [Changes from upstream](#changes-from-upstream) below.
+> This is a downstream fork of [isaacphi/mcp-language-server](https://github.com/STRd6/mcp-language-server) with a few extra tools, flags, and stability fixes. See [Changes from upstream](#changes-from-upstream) below.
 
 ## Demo
 
@@ -26,7 +26,7 @@ This is an [MCP](https://modelcontextprotocol.io/introduction) server that runs 
    go install
    ```
 
-   Or, to use upstream's released version: `go install github.com/isaacphi/mcp-language-server@latest`.
+   Or, to use upstream's released version: `go install github.com/STRd6/mcp-language-server@latest`.
 3. **Install a language server**: _follow one of the guides below_
 4. **Configure your MCP client**: _follow one of the guides below_
 
@@ -249,7 +249,7 @@ Please keep PRs small and open Issues first for anything substantial. AI slop O.
 Clone the repo:
 
 ```bash
-git clone https://github.com/isaacphi/mcp-language-server.git
+git clone https://github.com/STRd6/mcp-language-server.git
 cd mcp-language-server
 ```
 

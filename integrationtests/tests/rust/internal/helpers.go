@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/isaacphi/mcp-language-server/integrationtests/tests/common"
+	"github.com/STRd6/mcp-language-server/integrationtests/tests/common"
 )
 
 // GetTestSuite returns a test suite for Rust language server tests

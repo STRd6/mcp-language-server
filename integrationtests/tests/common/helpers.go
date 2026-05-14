@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/isaacphi/mcp-language-server/internal/lsp"
+	"github.com/STRd6/mcp-language-server/internal/lsp"
 )
 
 // WaitForReady blocks until the LSP signals "initial workspace work done"

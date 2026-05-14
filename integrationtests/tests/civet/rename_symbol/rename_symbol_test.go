@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/isaacphi/mcp-language-server/integrationtests/tests/civet/internal"
-	"github.com/isaacphi/mcp-language-server/integrationtests/tests/common"
-	"github.com/isaacphi/mcp-language-server/internal/tools"
+	"github.com/STRd6/mcp-language-server/integrationtests/tests/civet/internal"
+	"github.com/STRd6/mcp-language-server/integrationtests/tests/common"
+	"github.com/STRd6/mcp-language-server/internal/tools"
 )
 
 // TestRenameSymbol exercises civet-lsp's renameProvider: rename the

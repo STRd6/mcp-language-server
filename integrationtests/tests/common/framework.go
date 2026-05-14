@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/isaacphi/mcp-language-server/internal/logging"
-	"github.com/isaacphi/mcp-language-server/internal/lsp"
-	"github.com/isaacphi/mcp-language-server/internal/protocol"
-	"github.com/isaacphi/mcp-language-server/internal/watcher"
+	"github.com/STRd6/mcp-language-server/internal/logging"
+	"github.com/STRd6/mcp-language-server/internal/lsp"
+	"github.com/STRd6/mcp-language-server/internal/protocol"
+	"github.com/STRd6/mcp-language-server/internal/watcher"
 )
 
 // LSPTestConfig defines configuration for a language server test

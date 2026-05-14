@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/isaacphi/mcp-language-server/internal/lsp"
-	"github.com/isaacphi/mcp-language-server/internal/protocol"
-	"github.com/isaacphi/mcp-language-server/internal/utilities"
+	"github.com/STRd6/mcp-language-server/internal/lsp"
+	"github.com/STRd6/mcp-language-server/internal/protocol"
+	"github.com/STRd6/mcp-language-server/internal/utilities"
 )
 
 // FormatDocument formats a document using the LSP formatting capabilities.

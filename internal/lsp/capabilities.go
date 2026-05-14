@@ -1,6 +1,6 @@
 package lsp
 
-import "github.com/isaacphi/mcp-language-server/internal/protocol"
+import "github.com/STRd6/mcp-language-server/internal/protocol"
 
 // Or_* capability fields use a two-part check: the pointer must be non-nil
 // AND its .Value field must be non-nil. Plain pointer fields like

@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/STRd6/mcp-language-server/internal/protocol"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/isaacphi/mcp-language-server/internal/protocol"
 )
 
 var (

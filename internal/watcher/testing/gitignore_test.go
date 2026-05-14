@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/isaacphi/mcp-language-server/internal/protocol"
-	"github.com/isaacphi/mcp-language-server/internal/watcher"
+	"github.com/STRd6/mcp-language-server/internal/protocol"
+	"github.com/STRd6/mcp-language-server/internal/watcher"
 )
 
 // TestGitignorePatterns specifically tests the gitignore pattern integration

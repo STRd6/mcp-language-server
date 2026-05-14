@@ -20,4 +20,4 @@ func (s *SharedStruct) Process() error
 
 ---
 
-[`main.SharedStruct` on pkg.go.dev](https://pkg.go.dev/github.com/isaacphi/mcp-language-server/integrationtests/test-output/go/workspace#SharedStruct)
+[`main.SharedStruct` on pkg.go.dev](https://pkg.go.dev/github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace#SharedStruct)

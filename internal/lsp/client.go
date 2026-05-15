@@ -70,6 +70,13 @@ type Client struct {
 	// actually advertised. Read-only after init, so no mutex.
 	serverCapabilities *protocol.ServerCapabilities
 
+	// Per-client file-watch callback, installed by the workspace watcher via
+	// SetFileWatchHandler and invoked from handleRegisterCapability. Was a
+	// package-level global; that raced when multiple Clients lived in the
+	// same process (every integration test) — -race flagged it.
+	fileWatchHandler   FileWatchHandler
+	fileWatchHandlerMu sync.RWMutex
+
 	// Close is reachable from cleanup, signal handlers, and the idle
 	// watchdog. Guarantee the teardown runs exactly once and return
 	// the same result to every caller.
@@ -284,7 +291,7 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string, c
 	// (Kotlin LSP, async-lsp-based servers) into a broken state.
 	c.RegisterServerRequestHandler("workspace/applyEdit", HandleApplyEdit)
 	c.RegisterServerRequestHandler("workspace/configuration", HandleWorkspaceConfiguration)
-	c.RegisterServerRequestHandler("client/registerCapability", HandleRegisterCapability)
+	c.RegisterServerRequestHandler("client/registerCapability", c.handleRegisterCapability)
 	c.RegisterServerRequestHandler("window/workDoneProgress/create", HandleWorkDoneProgressCreate)
 	c.RegisterNotificationHandler("window/showMessage", HandleServerMessage)
 	c.RegisterNotificationHandler("textDocument/publishDiagnostics",
@@ -370,6 +377,21 @@ const (
 // initialize response, or nil if InitializeLSPClient hasn't completed.
 func (c *Client) ServerCapabilities() *protocol.ServerCapabilities {
 	return c.serverCapabilities
+}
+
+// SetFileWatchHandler installs the callback invoked when the LSP dynamically
+// registers a workspace/didChangeWatchedFiles watcher. Pass nil to clear.
+// Each Client has its own handler — the workspace watcher constructed with
+// this Client should call this exactly once.
+//
+// Signature mirrors watcher.LSPClient (inlined func type, not the
+// FileWatchHandler alias) so *Client satisfies that interface — Go treats
+// named func types and their underlying signatures as distinct for
+// interface-satisfaction.
+func (c *Client) SetFileWatchHandler(h func(id string, watchers []protocol.FileSystemWatcher)) {
+	c.fileWatchHandlerMu.Lock()
+	c.fileWatchHandler = h
+	c.fileWatchHandlerMu.Unlock()
 }
 
 // WaitForServerReady is a no-op kept for API stability. Per the LSP spec the

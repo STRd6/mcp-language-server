@@ -185,5 +185,11 @@ func (m *MockLSPClient) WaitForEventType(ctx context.Context, uri string, eventT
 	}
 }
 
+// SetFileWatchHandler satisfies the watcher.LSPClient interface. Tests using
+// MockLSPClient don't exercise server-driven file-watch registrations, so
+// this is intentionally a no-op.
+func (m *MockLSPClient) SetFileWatchHandler(handler func(id string, watchers []protocol.FileSystemWatcher)) {
+}
+
 // Verify the MockLSPClient implements the watcher.LSPClient interface
 var _ watcher.LSPClient = (*MockLSPClient)(nil)

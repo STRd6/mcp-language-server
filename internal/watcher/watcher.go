@@ -11,7 +11,6 @@ import (
 
 	"github.com/STRd6/mcp-language-server/internal/glob"
 	"github.com/STRd6/mcp-language-server/internal/logging"
-	"github.com/STRd6/mcp-language-server/internal/lsp"
 	"github.com/STRd6/mcp-language-server/internal/protocol"
 	"github.com/fsnotify/fsnotify"
 )
@@ -161,7 +160,7 @@ func (w *WorkspaceWatcher) WatchWorkspace(ctx context.Context, workspacePath str
 	}
 
 	// Register handler for file watcher registrations from the server
-	lsp.RegisterFileWatchHandler(func(id string, watchers []protocol.FileSystemWatcher) {
+	w.client.SetFileWatchHandler(func(id string, watchers []protocol.FileSystemWatcher) {
 		w.AddRegistrations(ctx, id, watchers)
 	})
 

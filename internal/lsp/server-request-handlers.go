@@ -7,16 +7,8 @@ import (
 	"github.com/STRd6/mcp-language-server/internal/utilities"
 )
 
-// FileWatchHandler is called when file watchers are registered by the server
+// FileWatchHandler is called when file watchers are registered by the server.
 type FileWatchHandler func(id string, watchers []protocol.FileSystemWatcher)
-
-// fileWatchHandler holds the current file watch handler
-var fileWatchHandler FileWatchHandler
-
-// RegisterFileWatchHandler registers a handler for file watcher registrations
-func RegisterFileWatchHandler(handler FileWatchHandler) {
-	fileWatchHandler = handler
-}
 
 // Requests
 
@@ -31,7 +23,13 @@ func HandleWorkDoneProgressCreate(params json.RawMessage) (any, error) {
 	return nil, nil
 }
 
-func HandleRegisterCapability(params json.RawMessage) (any, error) {
+// handleRegisterCapability is a method (not a free function) so each Client
+// dispatches to its own SetFileWatchHandler-installed callback. The previous
+// package-level fileWatchHandler global raced when multiple Clients existed
+// in the same process — most visibly in integration tests, where every
+// TestSuite.Setup spun up a watcher whose RegisterFileWatchHandler call
+// overwrote the previous one. -race caught it.
+func (c *Client) handleRegisterCapability(params json.RawMessage) (any, error) {
 	var registerParams protocol.RegistrationParams
 	if err := json.Unmarshal(params, &registerParams); err != nil {
 		lspLogger.Error("Error unmarshaling registration params: %v", err)
@@ -57,9 +55,11 @@ func HandleRegisterCapability(params json.RawMessage) (any, error) {
 				continue
 			}
 
-			// Notify file watchers
-			if fileWatchHandler != nil {
-				fileWatchHandler(reg.ID, opts.Watchers)
+			c.fileWatchHandlerMu.RLock()
+			handler := c.fileWatchHandler
+			c.fileWatchHandlerMu.RUnlock()
+			if handler != nil {
+				handler(reg.ID, opts.Watchers)
 			}
 		}
 	}

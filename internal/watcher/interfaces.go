@@ -20,6 +20,11 @@ type LSPClient interface {
 
 	// DidChangeWatchedFiles sends watched file events to the server
 	DidChangeWatchedFiles(ctx context.Context, params protocol.DidChangeWatchedFilesParams) error
+
+	// SetFileWatchHandler installs the callback invoked when the LSP
+	// dynamically registers a workspace/didChangeWatchedFiles watcher.
+	// Inlined signature so this interface doesn't import the lsp package.
+	SetFileWatchHandler(handler func(id string, watchers []protocol.FileSystemWatcher))
 }
 
 // WatcherConfig holds basic configuration for the watcher

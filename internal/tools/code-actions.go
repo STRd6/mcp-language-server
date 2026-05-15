@@ -35,7 +35,7 @@ func GetCodeActions(ctx context.Context, client *lsp.Client, filePath string, st
 
 	actions, err := client.CodeAction(ctx, params)
 	if err != nil {
-		return "", fmt.Errorf("failed to get code actions: %v", err)
+		return "", err
 	}
 	if len(actions) == 0 {
 		return "No code actions available", nil

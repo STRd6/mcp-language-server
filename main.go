@@ -306,6 +306,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// ServeStdio returned nil — stdin reached EOF. The harness closed our
+	// input (process exiting, or user closed the connection), or we're at
+	// the receiving end of a shell pipeline whose left side has exited.
+	// Without this cleanup the bridge would wait on <-done forever, since
+	// done is only closed by the signal handler or the PPID-becomes-1
+	// detector — neither of which fires on a plain stdin close while the
+	// parent process stays alive. Reported as "mcp-language-server doesn't
+	// exit on stdin EOF, holds shell pipelines hostage."
+	coreLogger.Info("Stdin closed, initiating shutdown")
+	cleanup(server, done)
 	<-done
 	coreLogger.Info("Server shutdown complete for PID: %d", os.Getpid())
 	os.Exit(0)

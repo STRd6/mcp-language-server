@@ -17,7 +17,10 @@ var lspLogger = logging.NewLogger(logging.LSP)
 var wireLogger = logging.NewLogger(logging.LSPWire)
 var processLogger = logging.NewLogger(logging.LSPProcess)
 
-// WriteMessage writes an LSP message to the given writer
+// WriteMessage writes an LSP message to the given writer. NOT safe for
+// concurrent use — header and body are two Write calls and can interleave.
+// Production callers must use Client.writeMessage, which holds c.stdinMu.
+// Exposed for tests that don't share the writer between goroutines.
 func WriteMessage(w io.Writer, msg *Message) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -41,6 +44,16 @@ func WriteMessage(w io.Writer, msg *Message) error {
 	}
 
 	return nil
+}
+
+// writeMessage sends msg to the LSP under stdinMu so concurrent senders
+// (tool handlers calling Call/Notify, plus server-request response writers
+// from handleMessages) can't interleave a header from one with the body of
+// another.
+func (c *Client) writeMessage(msg *Message) error {
+	c.stdinMu.Lock()
+	defer c.stdinMu.Unlock()
+	return WriteMessage(c.stdin, msg)
 }
 
 // ReadMessage reads a single LSP message from the given reader
@@ -95,6 +108,53 @@ func ReadMessage(r *bufio.Reader) (*Message, error) {
 	return &msg, nil
 }
 
+// handleServerRequest invokes the registered handler for a server-initiated
+// request and writes the response back. Runs in its own goroutine off the
+// read loop — see the goroutine-dispatch comment in handleMessages.
+func (c *Client) handleServerRequest(msg *Message) {
+	response := &Message{
+		JSONRPC: "2.0",
+		ID:      msg.ID,
+	}
+
+	c.serverHandlersMu.RLock()
+	handler, ok := c.serverRequestHandlers[msg.Method]
+	c.serverHandlersMu.RUnlock()
+
+	if ok {
+		lspLogger.Debug("Processing server request: method=%s id=%v", msg.Method, msg.ID)
+		result, err := handler(msg.Params)
+		if err != nil {
+			lspLogger.Error("Error handling server request %s: %v", msg.Method, err)
+			response.Error = &ResponseError{
+				Code:    -32603,
+				Message: err.Error(),
+			}
+		} else {
+			rawJSON, err := json.Marshal(result)
+			if err != nil {
+				lspLogger.Error("Failed to marshal response for %s: %v", msg.Method, err)
+				response.Error = &ResponseError{
+					Code:    -32603,
+					Message: fmt.Sprintf("failed to marshal response: %v", err),
+				}
+			} else {
+				response.Result = rawJSON
+			}
+		}
+	} else {
+		lspLogger.Warn("Method not found: %s", msg.Method)
+		response.Error = &ResponseError{
+			Code:    -32601,
+			Message: fmt.Sprintf("method not found: %s", msg.Method),
+		}
+	}
+
+	if err := c.writeMessage(response); err != nil {
+		lspLogger.Error("Error sending response to server: %v", err)
+	}
+}
+
 // handleMessages reads and dispatches messages in a loop
 func (c *Client) handleMessages() {
 	for {
@@ -109,52 +169,18 @@ func (c *Client) handleMessages() {
 			return
 		}
 
-		// Handle server->client request (has both Method and ID)
+		// Handle server->client request (has both Method and ID).
+		//
+		// Dispatched in a goroutine so the read loop stays responsive: the
+		// previous synchronous version blocked all further LSP traffic
+		// (responses to our own pending calls, publishDiagnostics, etc.)
+		// while a handler ran. HandleApplyEdit does disk I/O and is the
+		// most obvious offender, but the deadlock risk is worse than just
+		// slowness — the response Write goes to the LSP's stdin, and if
+		// the LSP's stdin pipe is full the read loop blocks indefinitely.
+		// Goroutine dispatch + writeMessage's stdin mutex avoids both.
 		if msg.Method != "" && msg.ID != nil && msg.ID.Value != nil {
-			response := &Message{
-				JSONRPC: "2.0",
-				ID:      msg.ID,
-			}
-
-			// Look up handler for this method
-			c.serverHandlersMu.RLock()
-			handler, ok := c.serverRequestHandlers[msg.Method]
-			c.serverHandlersMu.RUnlock()
-
-			if ok {
-				lspLogger.Debug("Processing server request: method=%s id=%v", msg.Method, msg.ID)
-				result, err := handler(msg.Params)
-				if err != nil {
-					lspLogger.Error("Error handling server request %s: %v", msg.Method, err)
-					response.Error = &ResponseError{
-						Code:    -32603,
-						Message: err.Error(),
-					}
-				} else {
-					rawJSON, err := json.Marshal(result)
-					if err != nil {
-						lspLogger.Error("Failed to marshal response for %s: %v", msg.Method, err)
-						response.Error = &ResponseError{
-							Code:    -32603,
-							Message: fmt.Sprintf("failed to marshal response: %v", err),
-						}
-					} else {
-						response.Result = rawJSON
-					}
-				}
-			} else {
-				lspLogger.Warn("Method not found: %s", msg.Method)
-				response.Error = &ResponseError{
-					Code:    -32601,
-					Message: fmt.Sprintf("method not found: %s", msg.Method),
-				}
-			}
-
-			// Send response back to server
-			if err := WriteMessage(c.stdin, response); err != nil {
-				lspLogger.Error("Error sending response to server: %v", err)
-			}
-
+			go c.handleServerRequest(msg)
 			continue
 		}
 
@@ -221,7 +247,7 @@ func (c *Client) callOnce(ctx context.Context, method string, params any) (*Mess
 		c.handlersMu.Unlock()
 	}()
 
-	if err := WriteMessage(c.stdin, msg); err != nil {
+	if err := c.writeMessage(msg); err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
@@ -284,7 +310,7 @@ func (c *Client) Notify(ctx context.Context, method string, params any) error {
 		return fmt.Errorf("failed to create notification: %w", err)
 	}
 
-	if err := WriteMessage(c.stdin, msg); err != nil {
+	if err := c.writeMessage(msg); err != nil {
 		return fmt.Errorf("failed to send notification: %w", err)
 	}
 

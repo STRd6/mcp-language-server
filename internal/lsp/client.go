@@ -22,6 +22,13 @@ type Client struct {
 	stdout *bufio.Reader
 	stderr io.ReadCloser
 
+	// Serializes writes to stdin. LSP framing is header + body in two
+	// separate Write calls, and we have several concurrent writers:
+	// Call/Notify from tool-handler goroutines, plus server-request
+	// responses from handleMessages (since b. moved them into goroutines).
+	// Without this mutex two writers can interleave and corrupt the frame.
+	stdinMu sync.Mutex
+
 	// Request ID counter
 	nextID atomic.Int32
 
@@ -56,6 +63,12 @@ type Client struct {
 	// Files are currently opened by the LSP
 	openFiles   map[string]*OpenFileInfo
 	openFilesMu sync.RWMutex
+
+	// Server capabilities from the initialize response. Set once by
+	// InitializeLSPClient and read by tools that need to gate optional LSP
+	// requests (e.g. textDocument/diagnostic pull mode) on what the server
+	// actually advertised. Read-only after init, so no mutex.
+	serverCapabilities *protocol.ServerCapabilities
 
 	// Close is reachable from cleanup, signal handlers, and the idle
 	// watchdog. Guarantee the teardown runs exactly once and return
@@ -112,15 +125,27 @@ func NewClient(command string, args ...string) (*Client, error) {
 		return nil, fmt.Errorf("failed to start LSP server: %w", err)
 	}
 
-	// Handle stderr in a separate goroutine with proper logging
+	// Handle stderr in a separate goroutine with proper logging. Uses
+	// bufio.Reader.ReadString rather than bufio.Scanner because Scanner's
+	// 64KB MaxScanTokenSize fails silently on the first oversize line
+	// (long stack trace, verbose telemetry dump, etc.) — after that the
+	// goroutine exits, the stderr pipe stops draining, and ~64KB later
+	// the LSP blocks on its next write to stderr. That deadlock has been
+	// observed as "bridge + LSP both alive, idle, sleeping on epoll/futex"
+	// after long-running sessions.
 	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			line := scanner.Text()
-			processLogger.Info("%s", line)
-		}
-		if err := scanner.Err(); err != nil {
-			lspLogger.Error("Error reading LSP server stderr: %v", err)
+		reader := bufio.NewReader(stderr)
+		for {
+			line, err := reader.ReadString('\n')
+			if line != "" {
+				processLogger.Info("%s", strings.TrimRight(line, "\r\n"))
+			}
+			if err != nil {
+				if err != io.EOF {
+					lspLogger.Error("Error reading LSP server stderr: %v", err)
+				}
+				return
+			}
 		}
 	}()
 
@@ -271,6 +296,7 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string, c
 	if err := c.Call(ctx, "initialize", initParams, &result); err != nil {
 		return nil, fmt.Errorf("initialize failed: %w", err)
 	}
+	c.serverCapabilities = &result.Capabilities
 
 	// Single initialized notification (no duplicate Notify call).
 	if err := c.Initialized(ctx, protocol.InitializedParams{}); err != nil {
@@ -340,17 +366,30 @@ const (
 	StateError
 )
 
+// ServerCapabilities returns the capabilities the server advertised in its
+// initialize response, or nil if InitializeLSPClient hasn't completed.
+func (c *Client) ServerCapabilities() *protocol.ServerCapabilities {
+	return c.serverCapabilities
+}
+
+// WaitForServerReady is a no-op kept for API stability. Per the LSP spec the
+// server is ready to receive requests as soon as the initialize handshake +
+// initialized notification have completed, both of which InitializeLSPClient
+// does synchronously. Servers that need post-init project loading must
+// signal it via $/progress; callers that need that should use the progress
+// helpers (e.g. WaitForProgress) instead of a blanket sleep.
 func (c *Client) WaitForServerReady(ctx context.Context) error {
-	// TODO: wait for specific messages or poll workspace/symbol
-	time.Sleep(time.Second * 1)
 	return nil
 }
 
 // WaitForDiagnostics blocks until the LSP publishes diagnostics for uri or
 // timeout expires, whichever comes first. After the first publish, sleeps
 // settle to coalesce follow-up updates (e.g. project-wide rescans). The
-// caller reads from the diagnostic cache after this returns.
-func (c *Client) WaitForDiagnostics(ctx context.Context, uri protocol.DocumentUri, timeout, settle time.Duration) {
+// caller reads from the diagnostic cache after this returns. Returns true if
+// a publish was observed (or the cache already held a prior publish), false
+// if we timed out without ever seeing one — callers use the bool to
+// distinguish "server said zero diagnostics" from "server hasn't reported yet".
+func (c *Client) WaitForDiagnostics(ctx context.Context, uri protocol.DocumentUri, timeout, settle time.Duration) bool {
 	ch := make(chan struct{}, 1)
 
 	c.diagnosticWaitersMu.Lock()
@@ -377,7 +416,7 @@ func (c *Client) WaitForDiagnostics(ctx context.Context, uri protocol.DocumentUr
 	_, hasExisting := c.diagnostics[uri]
 	c.diagnosticsMu.RUnlock()
 	if hasExisting {
-		return
+		return true
 	}
 
 	select {
@@ -388,9 +427,12 @@ func (c *Client) WaitForDiagnostics(ctx context.Context, uri protocol.DocumentUr
 		case <-time.After(settle):
 		case <-ctx.Done():
 		}
+		return true
 	case <-time.After(timeout):
 		lspLogger.Debug("WaitForDiagnostics timed out for %s after %s", uri, timeout)
+		return false
 	case <-ctx.Done():
+		return false
 	}
 }
 

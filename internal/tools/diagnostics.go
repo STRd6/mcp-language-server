@@ -30,25 +30,35 @@ func GetDiagnosticsForFile(ctx context.Context, client *lsp.Client, filePath str
 	uri := protocol.URIFromPath(filePath)
 
 	// Wait for the LSP to publish diagnostics for this URI (push mode).
-	// 3s upper bound matches the previous hardcoded sleep; settle window
-	// (150ms) absorbs follow-up republishes some servers send after a
-	// project-wide rescan.
-	client.WaitForDiagnostics(ctx, uri, 3*time.Second, 150*time.Millisecond)
+	// 30s upper bound covers cold-start typecheck on real projects (Civet
+	// on the Civet repo takes ~10s for its first publish). Returns as soon
+	// as the first publish lands; settle window (150ms) absorbs follow-up
+	// republishes some servers send after a project-wide rescan.
+	gotPublish := client.WaitForDiagnostics(ctx, uri, 30*time.Second, 150*time.Millisecond)
 
-	// Also attempt pull-mode (textDocument/diagnostic) for servers that
-	// support it. Push-only servers (e.g. Civet) return -32601; that's
-	// fine since the cache is already populated from publishDiagnostics.
-	diagParams := protocol.DocumentDiagnosticParams{
-		TextDocument: protocol.TextDocumentIdentifier{URI: uri},
-	}
-	if _, err = client.Diagnostic(ctx, diagParams); err != nil {
-		toolsLogger.Debug("Pull-mode diagnostic unavailable (server likely push-only): %v", err)
+	// Only attempt pull-mode (textDocument/diagnostic) for servers that
+	// actually advertised a diagnosticProvider. Push-only servers (e.g.
+	// civet-lsp) reject with -32601, but the request still rides their
+	// request queue — on a busy LSP (cold TS typecheck on a real project)
+	// that response can be blocked for many seconds behind the work
+	// producing the publishDiagnostics we already got.
+	if lsp.HasPullDiagnosticsSupport(client.ServerCapabilities()) {
+		diagParams := protocol.DocumentDiagnosticParams{
+			TextDocument: protocol.TextDocumentIdentifier{URI: uri},
+		}
+		if _, err = client.Diagnostic(ctx, diagParams); err != nil {
+			toolsLogger.Debug("Pull-mode diagnostic request failed: %v", err)
+		}
 	}
 
 	// Get diagnostics from the cache
 	diagnostics := client.GetFileDiagnostics(uri)
 
 	if len(diagnostics) == 0 {
+		if !gotPublish {
+			return "No diagnostics published yet for " + filePath +
+				" — the language server may still be performing its initial analysis. Try again in a few seconds.", nil
+		}
 		return "No diagnostics found for " + filePath, nil
 	}
 

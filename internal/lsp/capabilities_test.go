@@ -26,17 +26,21 @@ func docSymProvider(v any) *protocol.Or_ServerCapabilities_documentSymbolProvide
 func fmtProvider(v any) *protocol.Or_ServerCapabilities_documentFormattingProvider {
 	return &protocol.Or_ServerCapabilities_documentFormattingProvider{Value: v}
 }
+func diagProvider(v any) *protocol.Or_ServerCapabilities_diagnosticProvider {
+	return &protocol.Or_ServerCapabilities_diagnosticProvider{Value: v}
+}
 
 func TestCapabilityHelpers_NilCaps(t *testing.T) {
 	checks := map[string]func(*protocol.ServerCapabilities) bool{
-		"HasDefinitionSupport":     HasDefinitionSupport,
-		"HasReferencesSupport":     HasReferencesSupport,
-		"HasHoverSupport":          HasHoverSupport,
-		"HasRenameSupport":         HasRenameSupport,
-		"HasDocumentSymbolSupport": HasDocumentSymbolSupport,
-		"HasCodeActionSupport":     HasCodeActionSupport,
-		"HasFormattingSupport":     HasFormattingSupport,
-		"HasSemanticTokensSupport": HasSemanticTokensSupport,
+		"HasDefinitionSupport":      HasDefinitionSupport,
+		"HasReferencesSupport":      HasReferencesSupport,
+		"HasHoverSupport":           HasHoverSupport,
+		"HasRenameSupport":          HasRenameSupport,
+		"HasDocumentSymbolSupport":  HasDocumentSymbolSupport,
+		"HasCodeActionSupport":      HasCodeActionSupport,
+		"HasFormattingSupport":      HasFormattingSupport,
+		"HasSemanticTokensSupport":  HasSemanticTokensSupport,
+		"HasPullDiagnosticsSupport": HasPullDiagnosticsSupport,
 	}
 	for name, fn := range checks {
 		if fn(nil) {
@@ -148,6 +152,23 @@ func TestOrTypeHelpers(t *testing.T) {
 	t.Run("formatting Value nil", func(t *testing.T) {
 		caps := &protocol.ServerCapabilities{DocumentFormattingProvider: fmtProvider(nil)}
 		if HasFormattingSupport(caps) {
+			t.Error("want false")
+		}
+	})
+	t.Run("pull diagnostics supported", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{DiagnosticProvider: diagProvider(map[string]any{})}
+		if !HasPullDiagnosticsSupport(caps) {
+			t.Error("want true")
+		}
+	})
+	t.Run("pull diagnostics absent", func(t *testing.T) {
+		if HasPullDiagnosticsSupport(&protocol.ServerCapabilities{}) {
+			t.Error("want false")
+		}
+	})
+	t.Run("pull diagnostics Value nil", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{DiagnosticProvider: diagProvider(nil)}
+		if HasPullDiagnosticsSupport(caps) {
 			t.Error("want false")
 		}
 	})

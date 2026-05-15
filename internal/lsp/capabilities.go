@@ -77,3 +77,11 @@ func HasSemanticTokensSupport(caps *protocol.ServerCapabilities) bool {
 	}
 	return caps.SemanticTokensProvider != nil
 }
+
+func HasPullDiagnosticsSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.DiagnosticProvider != nil &&
+		caps.DiagnosticProvider.Value != nil
+}

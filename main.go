@@ -60,6 +60,33 @@ type mcpServer struct {
 	lspInitErr error
 }
 
+func printUsage() {
+	out := flag.CommandLine.Output()
+	fmt.Fprintf(out, "Usage of %s:\n", os.Args[0])
+	flag.PrintDefaults()
+	fmt.Fprint(out, `
+Sample .mcp.json (drop into your project root, then start your MCP client):
+
+{
+  "mcpServers": {
+    "language-server": {
+      "command": "mcp-language-server",
+      "args": [
+        "--workspace",
+        ".",
+        "--lsp",
+        "gopls"
+      ]
+    }
+  }
+}
+
+Replace "gopls" with your language server (rust-analyzer, pyright-langserver,
+typescript-language-server, clangd, civet-lsp, ...). Pass LSP-specific args
+after a "--" entry in the args array. See the README for per-language setup.
+`)
+}
+
 func parseConfig() (*config, error) {
 	cfg := &config{}
 	flag.StringVar(&cfg.workspaceDir, "workspace", "", "Path to workspace directory")
@@ -68,6 +95,7 @@ func parseConfig() (*config, error) {
 	flag.DurationVar(&cfg.idleTimeout, "idle-timeout", 0, "Shut down after this duration of no MCP traffic (e.g. 10m); 0 disables")
 	flag.StringVar(&cfg.configFile, "config", "", "Path to a JSON file whose keys are LSP binary names and values are passed as initializationOptions for that LSP (see README)")
 	flag.BoolVar(&cfg.lspInitAsync, "lsp-init-async", false, "Initialize the LSP in a background goroutine so ServeStdio starts immediately. Capability-gated tools then register after the handshake via tools/list_changed (clients must honor it). Default: synchronous init, all tools available before ServeStdio.")
+	flag.Usage = printUsage
 	flag.Parse()
 
 	// Get remaining args after -- as LSP arguments

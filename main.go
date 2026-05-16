@@ -22,6 +22,10 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// version is reported by --version and advertised as the MCP server
+// version. Bump alongside the git tag.
+const version = "v0.3.2"
+
 // Create a logger for the core component
 var coreLogger = logging.NewLogger(logging.Core)
 
@@ -89,14 +93,21 @@ after a "--" entry in the args array. See the README for per-language setup.
 
 func parseConfig() (*config, error) {
 	cfg := &config{}
+	var showVersion bool
 	flag.StringVar(&cfg.workspaceDir, "workspace", "", "Path to workspace directory")
 	flag.StringVar(&cfg.lspCommand, "lsp", "", "LSP command to run (args should be passed after --)")
 	flag.StringVar(&cfg.disabledToolStr, "disable-tools", "", "Comma-separated list of tools to disable")
 	flag.DurationVar(&cfg.idleTimeout, "idle-timeout", 0, "Shut down after this duration of no MCP traffic (e.g. 10m); 0 disables")
 	flag.StringVar(&cfg.configFile, "config", "", "Path to a JSON file whose keys are LSP binary names and values are passed as initializationOptions for that LSP (see README)")
 	flag.BoolVar(&cfg.lspInitAsync, "lsp-init-async", false, "Initialize the LSP in a background goroutine so ServeStdio starts immediately. Capability-gated tools then register after the handshake via tools/list_changed (clients must honor it). Default: synchronous init, all tools available before ServeStdio.")
+	flag.BoolVar(&showVersion, "version", false, "Print version and exit")
 	flag.Usage = printUsage
 	flag.Parse()
+
+	if showVersion {
+		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "mcp-language-server %s\n", version)
+		os.Exit(0)
+	}
 
 	// Get remaining args after -- as LSP arguments
 	cfg.lspArgs = flag.Args()
@@ -229,7 +240,7 @@ func (s *mcpServer) start(onIdle func()) error {
 
 	s.mcpServer = server.NewMCPServer(
 		"MCP Language Server",
-		"v0.0.2",
+		version,
 		opts...,
 	)
 
@@ -273,16 +284,18 @@ func (s *mcpServer) start(onIdle func()) error {
 }
 
 func main() {
-	coreLogger.Info("MCP Language Server starting")
-
-	done := make(chan struct{})
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
+	// parseConfig is called before any logging so that --version (and
+	// flag-parse errors) print cleanly without a leading "starting" line.
 	config, err := parseConfig()
 	if err != nil {
 		coreLogger.Fatal("%v", err)
 	}
+
+	coreLogger.Info("MCP Language Server %s starting", version)
+
+	done := make(chan struct{})
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	server, err := newServer(config)
 	if err != nil {

@@ -25,29 +25,69 @@ func ApplyTextEdits(ctx context.Context, client *lsp.Client, filePath string, ed
 		return "", fmt.Errorf("could not open file: %v", err)
 	}
 
-	// Create a sorted copy of edits for reporting
+	// Read the file once for edit classification (insert-as-replace vs real
+	// replacement). The protocol only has range-replace, so callers wanting
+	// to insert pass startLine == endLine and include the original line in
+	// newText. Reporting that as "1 removed, 2 added" misleads the caller
+	// into thinking the original was clobbered; detect the pattern here
+	// and report "Inserted N lines" when applicable.
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file: %v", err)
+	}
+	lineEnding := "\n"
+	if bytes.Contains(content, []byte("\r\n")) {
+		lineEnding = "\r\n"
+	}
+	fileLines := strings.Split(string(content), lineEnding)
+
+	// Sort a copy ascending for reporting; we leave the input order alone
+	// (it gets re-sorted descending below for application).
 	sortedEdits := make([]TextEdit, len(edits))
 	copy(sortedEdits, edits)
 	sort.Slice(sortedEdits, func(i, j int) bool {
 		return sortedEdits[i].StartLine < sortedEdits[j].StartLine
 	})
 
-	// Track lines added and removed for sorted edits
+	// Old-style tallies (kept for the fallback message when not every edit
+	// is a pure insertion).
 	linesRemovedSorted := 0
 	linesAddedSorted := 0
 	for _, edit := range sortedEdits {
-		// Calculate lines removed: end - start + 1
-		removedLineCount := edit.EndLine - edit.StartLine + 1
-		linesRemovedSorted += removedLineCount
-
-		// Calculate lines added: count newlines in the replacement text + 1
-		addedLineCount := 1
+		linesRemovedSorted += edit.EndLine - edit.StartLine + 1
 		if edit.NewText != "" {
-			addedLineCount = strings.Count(edit.NewText, "\n") + 1
-		} else if edit.NewText == "" {
-			addedLineCount = 0
+			linesAddedSorted += strings.Count(edit.NewText, "\n") + 1
 		}
-		linesAddedSorted += addedLineCount
+	}
+
+	// Insert-as-replace detection: newText preserves the original lines
+	// verbatim as either a prefix (insert-after) or suffix (insert-before),
+	// with extra lines tacked on. Only report the "Inserted" message when
+	// EVERY edit in the batch fits this pattern, so the existing
+	// removed/added accounting remains correct for mixed cases.
+	allInserts := len(sortedEdits) > 0
+	insertedLines := 0
+	for _, edit := range sortedEdits {
+		startIdx := edit.StartLine - 1
+		endIdx := edit.EndLine - 1
+		if startIdx < 0 || endIdx < startIdx || endIdx >= len(fileLines) {
+			allInserts = false
+			break
+		}
+		existing := strings.Join(fileLines[startIdx:endIdx+1], lineEnding)
+		switch {
+		case existing != "" && strings.HasPrefix(edit.NewText, existing+lineEnding):
+			extra := edit.NewText[len(existing)+len(lineEnding):]
+			insertedLines += strings.Count(extra, lineEnding) + 1
+		case existing != "" && strings.HasSuffix(edit.NewText, lineEnding+existing):
+			extra := edit.NewText[:len(edit.NewText)-len(existing)-len(lineEnding)]
+			insertedLines += strings.Count(extra, lineEnding) + 1
+		default:
+			allInserts = false
+		}
+		if !allInserts {
+			break
+		}
 	}
 
 	// Sort edits by line number in descending order to process from bottom to top
@@ -82,6 +122,13 @@ func ApplyTextEdits(ctx context.Context, client *lsp.Client, filePath string, ed
 		return "", fmt.Errorf("failed to apply text edits: %v", err)
 	}
 
+	if allInserts && insertedLines > 0 {
+		noun := "lines"
+		if insertedLines == 1 {
+			noun = "line"
+		}
+		return fmt.Sprintf("Successfully applied text edits. Inserted %d %s.", insertedLines, noun), nil
+	}
 	return fmt.Sprintf("Successfully applied text edits. %d lines removed, %d lines added.", linesRemovedSorted, linesAddedSorted), nil
 }
 

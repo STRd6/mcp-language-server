@@ -4,6 +4,34 @@ All notable changes to this fork are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v0.3.1] – 2026-05-15
+
+Bug-fix patch on top of v0.3.0.
+
+### Fixed
+- `GetFullDefinition` no longer panics with "index out of range" when an
+  LSP returns a symbol position past EOF. The template/attribute
+  scan-back loop now bounds-checks against the file's line count.
+  Triggered in the wild by civet-lsp on `.hera` files when source-map
+  remap escaped the file — one bad position took down the whole
+  diagnostics response. Matching guards added to
+  `GetLineRangesToDisplay` so the contract is obvious at the call site.
+- `diagnostics` tool's `contextLines` parameter is now functional. The
+  schema declared it as a boolean but the handler read it as int, so it
+  was effectively inert and only `LSP_CONTEXT_LINES` could change the
+  count. Switched the schema to a number with default 5; bool values
+  are still accepted for back-compat (`true` → 5, `false` → 0).
+- `code_actions` tool no longer wraps LSP errors in an extra
+  `failed to get code actions:` prefix; the underlying message comes
+  through unmodified.
+
+### Added
+- `--help` now prints a sample `.mcp.json` snippet so first-time users
+  can drop a working config into their project without leaving the CLI.
+
+### Internal
+- `printUsage` writes are no longer flagged by errcheck.
+
 ## [v0.3.0] – 2026-05-15
 
 Focused on bridge↔LSP↔harness reliability: cold-start UX, long-running

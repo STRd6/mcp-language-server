@@ -127,9 +127,9 @@ func (s *mcpServer) registerAlwaysOnTools() {
 			mcp.Required(),
 			mcp.Description("The path to the file to get diagnostics for"),
 		),
-		mcp.WithBoolean("contextLines",
-			mcp.Description("Lines to include around each diagnostic."),
-			mcp.DefaultBool(false),
+		mcp.WithNumber("contextLines",
+			mcp.Description("Number of lines to include around each diagnostic. Defaults to 5; set to 0 to disable. Overridden by LSP_CONTEXT_LINES env var."),
+			mcp.DefaultNumber(5),
 		),
 		mcp.WithBoolean("showLineNumbers",
 			mcp.Description("If true, adds line numbers to the output"),
@@ -144,9 +144,20 @@ func (s *mcpServer) registerAlwaysOnTools() {
 			return mcp.NewToolResultError("filePath must be a string"), nil
 		}
 
+		// contextLines is declared as a number, but accept a bool too for
+		// back-compat with the old schema: true → default count, false → 0.
+		// JSON numbers decode as float64; int is included for hand-rolled
+		// callers.
 		contextLines := 5 // default value
-		if contextLinesArg, ok := request.Params.Arguments["contextLines"].(int); ok {
-			contextLines = contextLinesArg
+		switch v := request.Params.Arguments["contextLines"].(type) {
+		case float64:
+			contextLines = int(v)
+		case int:
+			contextLines = v
+		case bool:
+			if !v {
+				contextLines = 0
+			}
 		}
 
 		showLineNumbers := true // default value

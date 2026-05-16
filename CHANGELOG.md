@@ -4,6 +4,40 @@ All notable changes to this fork are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.0] – 2026-05-15
+
+mcp-go bumped 10 versions past dependabot's target, picking up native
+`logging/setLevel` handling along the way. Closes upstream issue #79.
+
+### Added
+- `logging/setLevel` is now implemented. The server already advertised
+  the logging capability via `server.WithLogging()`, but mcp-go pre-v0.39
+  didn't have a handler for the method, so clients saw method-not-found.
+  v0.54.0 ships `handleSetLevel` plus `SessionWithLogging`; we get it
+  for free. Verified end-to-end: valid levels return `{}`, invalid
+  levels return `-32602 invalid params`.
+- `--version` CLI flag (and `-version`). Replaces the stale hardcoded
+  `"v0.0.2"` previously baked into the MCP server registration with a
+  single `version` constant used in both places.
+
+### Changed
+- `edit_file` reports insert-as-replace as `Inserted N lines` instead of
+  the literally-true-but-misleading `N lines removed, M lines added`.
+  Detection: every edit in the batch must preserve the original lines
+  verbatim as a prefix (insert-after) or suffix (insert-before) of
+  `newText`. Mixed batches keep the existing message.
+- `parseConfig` is called before the "starting" log line so `--version`
+  output isn't polluted by it.
+
+### Dependencies
+- `github.com/mark3labs/mcp-go` v0.28.0 → v0.54.0. Breaking change in
+  v0.39: `CallToolParams.Arguments` is now `any` (was `map[string]any`)
+  with typed accessors (`RequireString`/`RequireInt`/`GetBool`/etc.).
+  Every tool handler in `tools.go` migrated; -120 lines of manual
+  type-switching gone. The `contextLines` bool back-compat (from
+  v0.3.1) is preserved via a raw type check, since `GetInt` doesn't
+  accept bool.
+
 ## [v0.3.1] – 2026-05-15
 
 Bug-fix patch on top of v0.3.0.

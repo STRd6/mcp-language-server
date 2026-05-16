@@ -62,9 +62,9 @@ type mcpServer struct {
 
 func printUsage() {
 	out := flag.CommandLine.Output()
-	fmt.Fprintf(out, "Usage of %s:\n", os.Args[0])
+	_, _ = fmt.Fprintf(out, "Usage of %s:\n", os.Args[0])
 	flag.PrintDefaults()
-	fmt.Fprint(out, `
+	_, _ = fmt.Fprint(out, `
 Sample .mcp.json (drop into your project root, then start your MCP client):
 
 {

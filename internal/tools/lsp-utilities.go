@@ -83,8 +83,12 @@ func GetFullDefinition(ctx context.Context, client *lsp.Client, startLocation pr
 		// lines. Scan up to 5 lines back; if any look like a template or
 		// attribute declaration, extend the start there so the captured
 		// definition is complete.
+		// Guard against LSP-reported positions past EOF (e.g. source-mapped
+		// servers like civet-lsp on .hera can return positions outside the
+		// remapped file). Out-of-bounds should clamp silently rather than
+		// panic and discard the rest of the response.
 		originalStartLine := int(symbolRange.Start.Line)
-		for lineNum := originalStartLine - 1; lineNum >= 0 && lineNum >= originalStartLine-5; lineNum-- {
+		for lineNum := originalStartLine - 1; lineNum >= 0 && lineNum >= originalStartLine-5 && lineNum < len(lines); lineNum-- {
 			trimmed := strings.TrimSpace(lines[lineNum])
 			if strings.HasPrefix(trimmed, "template") || strings.HasPrefix(trimmed, "[[") {
 				symbolRange.Start.Line = uint32(lineNum)
@@ -175,15 +179,21 @@ func GetLineRangesToDisplay(ctx context.Context, client *lsp.Client, locations [
 			continue
 		}
 
-		// Add container start and end lines
+		// Add container start and end lines. Bounds-check so an
+		// out-of-range LSP position can't poison the map (the map itself
+		// tolerates any key, but keeping the guard here makes the contract
+		// obvious alongside the loop below).
 		containerStart := int(containerLoc.Range.Start.Line)
 		containerEnd := int(containerLoc.Range.End.Line)
-		linesToShow[containerStart] = true
-		// linesToShow[containerEnd] = true
+		if containerStart >= 0 && containerStart < totalLines {
+			linesToShow[containerStart] = true
+		}
 
 		// Add the reference line
 		refLine := int(loc.Range.Start.Line)
-		linesToShow[refLine] = true
+		if refLine >= 0 && refLine < totalLines {
+			linesToShow[refLine] = true
+		}
 
 		// Add context lines around the reference
 		for i := refLine - contextLines; i <= refLine+contextLines; i++ {

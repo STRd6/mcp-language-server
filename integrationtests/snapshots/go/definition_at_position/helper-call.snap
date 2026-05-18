@@ -1,0 +1,9 @@
+---
+
+/TEST_OUTPUT/workspace/helper.go
+Range: L4:C1 - L6:C2
+
+4|func HelperFunction() string {
+5|	return "hello world"
+6|}
+

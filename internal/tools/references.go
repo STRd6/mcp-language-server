@@ -13,13 +13,7 @@ import (
 )
 
 func FindReferences(ctx context.Context, client *lsp.Client, symbolName string) (string, error) {
-	// Get context lines from environment variable
-	contextLines := 5
-	if envLines := os.Getenv("LSP_CONTEXT_LINES"); envLines != "" {
-		if val, err := strconv.Atoi(envLines); err == nil && val >= 0 {
-			contextLines = val
-		}
-	}
+	contextLines := referenceContextLines()
 
 	// First get the symbol location like ReadDefinition does
 	symbolResult, err := client.Symbol(ctx, protocol.WorkspaceSymbolParams{
@@ -51,96 +45,29 @@ func FindReferences(ctx context.Context, client *lsp.Client, symbolName string) 
 			continue
 		}
 
-		// Get the location of the symbol
 		loc := symbol.GetLocation()
-
-		// Use LSP references request with correct params structure
-		refsParams := protocol.ReferenceParams{
-			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
-				TextDocument: protocol.TextDocumentIdentifier{
-					URI: loc.URI,
-				},
-				Position: loc.Range.Start,
-			},
-			Context: protocol.ReferenceContext{
-				IncludeDeclaration: false,
-			},
-		}
 		// File is likely to be opened already, but may not be.
-		err := client.OpenFile(ctx, loc.URI.Path())
-		if err != nil {
+		if err := client.OpenFile(ctx, loc.URI.Path()); err != nil {
 			toolsLogger.Error("Error opening file: %v", err)
 			continue
 		}
-		refs, err := client.References(ctx, refsParams)
+
+		refs, err := client.References(ctx, protocol.ReferenceParams{
+			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+				TextDocument: protocol.TextDocumentIdentifier{URI: loc.URI},
+				Position:     loc.Range.Start,
+			},
+			Context: protocol.ReferenceContext{IncludeDeclaration: false},
+		})
 		if err != nil {
 			return "", fmt.Errorf("failed to get references: %v", err)
 		}
 
-		// Group references by file
-		refsByFile := make(map[protocol.DocumentUri][]protocol.Location)
-		for _, ref := range refs {
-			refsByFile[ref.URI] = append(refsByFile[ref.URI], ref)
+		blocks, err := formatReferencesByFile(ctx, client, refs, contextLines)
+		if err != nil {
+			return "", err
 		}
-
-		// Get sorted list of URIs
-		uris := make([]string, 0, len(refsByFile))
-		for uri := range refsByFile {
-			uris = append(uris, string(uri))
-		}
-		sort.Strings(uris)
-
-		// Process each file's references in sorted order
-		for _, uriStr := range uris {
-			uri := protocol.DocumentUri(uriStr)
-			fileRefs := refsByFile[uri]
-			filePath := protocol.DocumentUri(uriStr).Path()
-
-			// Format file header
-			fileInfo := fmt.Sprintf("---\n\n%s\nReferences in File: %d\n",
-				filePath,
-				len(fileRefs),
-			)
-
-			// Format locations with context
-			fileContent, err := os.ReadFile(filePath)
-			if err != nil {
-				// Log error but continue with other files
-				allReferences = append(allReferences, fileInfo+"\nError reading file: "+err.Error())
-				continue
-			}
-
-			lines := strings.Split(string(fileContent), "\n")
-
-			// Track reference locations for header display
-			var locStrings []string
-			for _, ref := range fileRefs {
-				locStr := fmt.Sprintf("L%d:C%d",
-					ref.Range.Start.Line+1,
-					ref.Range.Start.Character+1)
-				locStrings = append(locStrings, locStr)
-			}
-
-			// Collect lines to display using the utility function
-			linesToShow, err := GetLineRangesToDisplay(ctx, client, fileRefs, len(lines), contextLines)
-			if err != nil {
-				// Log error but continue with other files
-				continue
-			}
-
-			// Convert to line ranges using the utility function
-			lineRanges := ConvertLinesToRanges(linesToShow, len(lines))
-
-			// Format with locations in header
-			formattedOutput := fileInfo
-			if len(locStrings) > 0 {
-				formattedOutput += "At: " + strings.Join(locStrings, ", ") + "\n"
-			}
-
-			// Format the content with ranges
-			formattedOutput += "\n" + FormatLinesWithRanges(lines, lineRanges)
-			allReferences = append(allReferences, formattedOutput)
-		}
+		allReferences = append(allReferences, blocks...)
 	}
 
 	if len(allReferences) == 0 {
@@ -148,4 +75,106 @@ func FindReferences(ctx context.Context, client *lsp.Client, symbolName string) 
 	}
 
 	return strings.Join(allReferences, "\n"), nil
+}
+
+// FindReferencesAtPosition resolves references for the symbol at the given
+// 1-indexed (line, column) via textDocument/references. Avoids the
+// workspace/symbol fan-out used by FindReferences, so it can disambiguate
+// same-named symbols and won't duplicate the reference set for symbols that
+// have multiple workspace/symbol hits (decl + export + dist copies).
+func FindReferencesAtPosition(ctx context.Context, client *lsp.Client, filePath string, line, column int) (string, error) {
+	if err := client.OpenFile(ctx, filePath); err != nil {
+		return "", fmt.Errorf("could not open file: %v", err)
+	}
+
+	uri := protocol.URIFromPath(filePath)
+	refs, err := client.References(ctx, protocol.ReferenceParams{
+		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+			TextDocument: protocol.TextDocumentIdentifier{URI: uri},
+			Position: protocol.Position{
+				Line:      uint32(line - 1),
+				Character: uint32(column - 1),
+			},
+		},
+		Context: protocol.ReferenceContext{IncludeDeclaration: false},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get references: %v", err)
+	}
+
+	blocks, err := formatReferencesByFile(ctx, client, refs, referenceContextLines())
+	if err != nil {
+		return "", err
+	}
+	if len(blocks) == 0 {
+		return fmt.Sprintf("No references found at %s:%d:%d", filePath, line, column), nil
+	}
+	return strings.Join(blocks, "\n"), nil
+}
+
+func referenceContextLines() int {
+	contextLines := 5
+	if envLines := os.Getenv("LSP_CONTEXT_LINES"); envLines != "" {
+		if val, err := strconv.Atoi(envLines); err == nil && val >= 0 {
+			contextLines = val
+		}
+	}
+	return contextLines
+}
+
+// formatReferencesByFile groups locations by file and renders each file as a
+// "---\n\n<path>\nReferences in File: N\nAt: ...\n\n<source>" block, in
+// sorted-by-URI order. Files that fail to read are reported inline rather
+// than aborting the whole response.
+func formatReferencesByFile(ctx context.Context, client *lsp.Client, refs []protocol.Location, contextLines int) ([]string, error) {
+	refsByFile := make(map[protocol.DocumentUri][]protocol.Location)
+	for _, ref := range refs {
+		refsByFile[ref.URI] = append(refsByFile[ref.URI], ref)
+	}
+
+	uris := make([]string, 0, len(refsByFile))
+	for uri := range refsByFile {
+		uris = append(uris, string(uri))
+	}
+	sort.Strings(uris)
+
+	var out []string
+	for _, uriStr := range uris {
+		uri := protocol.DocumentUri(uriStr)
+		fileRefs := refsByFile[uri]
+		filePath := uri.Path()
+
+		fileInfo := fmt.Sprintf("---\n\n%s\nReferences in File: %d\n",
+			filePath,
+			len(fileRefs),
+		)
+
+		fileContent, err := os.ReadFile(filePath)
+		if err != nil {
+			out = append(out, fileInfo+"\nError reading file: "+err.Error())
+			continue
+		}
+
+		lines := strings.Split(string(fileContent), "\n")
+
+		var locStrings []string
+		for _, ref := range fileRefs {
+			locStrings = append(locStrings,
+				fmt.Sprintf("L%d:C%d", ref.Range.Start.Line+1, ref.Range.Start.Character+1))
+		}
+
+		linesToShow, err := GetLineRangesToDisplay(ctx, client, fileRefs, len(lines), contextLines)
+		if err != nil {
+			continue
+		}
+		lineRanges := ConvertLinesToRanges(linesToShow, len(lines))
+
+		formatted := fileInfo
+		if len(locStrings) > 0 {
+			formatted += "At: " + strings.Join(locStrings, ", ") + "\n"
+		}
+		formatted += "\n" + FormatLinesWithRanges(lines, lineRanges)
+		out = append(out, formatted)
+	}
+	return out, nil
 }

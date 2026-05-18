@@ -1,0 +1,12 @@
+---
+
+/TEST_OUTPUT/workspace/types.go
+Range: L6:C1 - L11:C2
+
+ 6|type SharedStruct struct {
+ 7|	ID        int
+ 8|	Name      string
+ 9|	Value     float64
+10|	Constants []string
+11|}
+

@@ -218,6 +218,47 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 			}
 			return mcp.NewToolResultText(text), nil
 		})
+
+		definitionAtPositionTool := mcp.NewTool("definition_at_position",
+			mcp.WithDescription("Read the source code definition of the symbol at the given file/line/column. Uses textDocument/definition directly (no workspace/symbol fan-out), so it disambiguates same-named symbols by call site and avoids build-output duplicates."),
+			mcp.WithTitleAnnotation("Go to Definition (Positional)"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath",
+				mcp.Required(),
+				mcp.Description("The path to the file containing the symbol reference"),
+			),
+			mcp.WithNumber("line",
+				mcp.Required(),
+				mcp.Description("The line number of the symbol reference (1-indexed)"),
+			),
+			mcp.WithNumber("column",
+				mcp.Required(),
+				mcp.Description("The column number of the symbol reference (1-indexed)"),
+			),
+		)
+
+		s.addTool(definitionAtPositionTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			line, err := request.RequireInt("line")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			column, err := request.RequireInt("column")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			coreLogger.Debug("Executing definition_at_position for %s:%d:%d", filePath, line, column)
+			text, err := tools.ReadDefinitionAtPosition(s.ctx, s.lspClient, filePath, line, column)
+			if err != nil {
+				coreLogger.Error("Failed to get definition: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to get definition: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
 	} else {
 		coreLogger.Info("Skipping 'definition' tool — LSP lacks definition or workspace/symbol")
 	}
@@ -241,6 +282,47 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 
 			coreLogger.Debug("Executing references for symbol: %s", symbolName)
 			text, err := tools.FindReferences(s.ctx, s.lspClient, symbolName)
+			if err != nil {
+				coreLogger.Error("Failed to find references: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to find references: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+
+		referencesAtPositionTool := mcp.NewTool("references_at_position",
+			mcp.WithDescription("Find all references to the symbol at the given file/line/column. Uses textDocument/references directly (no workspace/symbol fan-out), so it disambiguates same-named symbols and avoids duplicated reference sets when multiple workspace symbols share a name."),
+			mcp.WithTitleAnnotation("Find References (Positional)"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath",
+				mcp.Required(),
+				mcp.Description("The path to the file containing the symbol"),
+			),
+			mcp.WithNumber("line",
+				mcp.Required(),
+				mcp.Description("The line number of the symbol (1-indexed)"),
+			),
+			mcp.WithNumber("column",
+				mcp.Required(),
+				mcp.Description("The column number of the symbol (1-indexed)"),
+			),
+		)
+
+		s.addTool(referencesAtPositionTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			line, err := request.RequireInt("line")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			column, err := request.RequireInt("column")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			coreLogger.Debug("Executing references_at_position for %s:%d:%d", filePath, line, column)
+			text, err := tools.FindReferencesAtPosition(s.ctx, s.lspClient, filePath, line, column)
 			if err != nil {
 				coreLogger.Error("Failed to find references: %v", err)
 				return mcp.NewToolResultError(fmt.Sprintf("failed to find references: %v", err)), nil

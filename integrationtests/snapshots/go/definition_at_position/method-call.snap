@@ -1,0 +1,9 @@
+---
+
+/TEST_OUTPUT/workspace/types.go
+Range: L14:C1 - L16:C2
+
+14|func (s *SharedStruct) Method() string {
+15|	return s.Name
+16|}
+

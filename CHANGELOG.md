@@ -4,6 +4,19 @@ All notable changes to this fork are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.1] – 2026-05-17
+
+### Performance
+- `diagnostics` and `references` now cache `textDocument/documentSymbol`
+  per URI inside `GetLineRangesToDisplay`. Previously the loop called
+  `GetFullDefinition` once per location, and every call did its own
+  `documentSymbol` RPC — so N identical round-trips serialized through
+  the LSP's request queue. With civet-lsp on Civet's `parser.hera`
+  emitting 1.6k–17k cascading TS diagnostics, the tool call hung past
+  95 s; the fix brings it down to ~16 s end-to-end (≈1 LSP RPC instead
+  of 17k). Container-search semantics preserved (outer container wins,
+  matching the original `searchSymbols` behavior).
+
 ## [v0.4.0] – 2026-05-15
 
 mcp-go bumped 10 versions past dependabot's target, picking up native

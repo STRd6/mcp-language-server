@@ -4,6 +4,21 @@ All notable changes to this fork are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.2] – 2026-05-17
+
+### Added
+- `definition_at_position` and `references_at_position` — positional
+  variants of the existing name-based tools, mirroring `hover`'s shape
+  (`filePath`, `line`, `column`). They call `textDocument/definition`
+  and `textDocument/references` directly instead of going through
+  `workspace/symbol`. Fixes three problems with the name-based path:
+  no call-site disambiguation when two unrelated symbols share a name,
+  build-output (e.g. `dist/`) showing up as extra results because the
+  LSP indexes it, and `references` duplicating its output once per
+  `workspace/symbol` hit when one logical symbol has multiple matches.
+  The original name-based `definition` / `references` tools are kept
+  for the case where the caller only has a name.
+
 ## [v0.4.1] – 2026-05-17
 
 ### Performance

@@ -24,7 +24,7 @@ import (
 
 // version is reported by --version and advertised as the MCP server
 // version. Bump alongside the git tag.
-const version = "v0.4.2"
+const version = "v0.4.3"
 
 // Create a logger for the core component
 var coreLogger = logging.NewLogger(logging.Core)

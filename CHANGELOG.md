@@ -4,7 +4,7 @@ All notable changes to this fork are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [v0.4.3] – 2026-05-18
 
 ### Added
 - Eight new capability-gated MCP tools wrapping LSP handlers that the

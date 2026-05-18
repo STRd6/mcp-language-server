@@ -1,0 +1,8 @@
+---
+
+/TEST_OUTPUT/workspace/main.civet
+Range: L1:C1 - L2:C8
+
+1|function add(a: number, b: number): number
+2|  a + b
+

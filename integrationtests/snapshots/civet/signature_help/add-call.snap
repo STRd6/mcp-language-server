@@ -1,0 +1,5 @@
+Signature Help (1 signature(s)):
+
+→ [1] add(a: number, b: number): number
+    → a: number
+      b: number

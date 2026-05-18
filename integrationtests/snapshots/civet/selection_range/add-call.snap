@@ -1,0 +1,5 @@
+Selection Range chain (4 level(s), outermost first):
+  [0] L1:C1-L10:C1  function add(a: number, b: number): number
+  [1] L7:C1-L7:C16  sum := add 2, 3
+  [2] L7:C8-L7:C16  sum := add 2, 3
+  [3] L7:C8-L7:C11  sum := add 2, 3

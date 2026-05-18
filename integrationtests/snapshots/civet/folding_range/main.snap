@@ -1,0 +1,3 @@
+Folding Ranges (2):
+  L1-2  function add(a: number, b: number): number
+  L4-5  function multiply(a: number, b: number): number

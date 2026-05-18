@@ -1,0 +1,7 @@
+Document Highlights (2):
+
+Write (1):
+  L1:C10-L1:C13  function add(a: number, b: number): number
+
+Read (1):
+  L7:C8-L7:C11  sum := add 2, 3

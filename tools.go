@@ -182,7 +182,7 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 		return
 	}
 
-	coreLogger.Info("LSP capabilities: definition=%v references=%v hover=%v rename=%v documentSymbol=%v codeAction=%v formatting=%v semanticTokens=%v",
+	coreLogger.Info("LSP capabilities: definition=%v references=%v hover=%v rename=%v documentSymbol=%v codeAction=%v formatting=%v semanticTokens=%v signatureHelp=%v typeDefinition=%v implementation=%v documentHighlight=%v foldingRange=%v selectionRange=%v linkedEditingRange=%v prepareRename=%v",
 		lsp.HasDefinitionSupport(caps),
 		lsp.HasReferencesSupport(caps),
 		lsp.HasHoverSupport(caps),
@@ -191,6 +191,14 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 		lsp.HasCodeActionSupport(caps),
 		lsp.HasFormattingSupport(caps),
 		lsp.HasSemanticTokensSupport(caps),
+		lsp.HasSignatureHelpSupport(caps),
+		lsp.HasTypeDefinitionSupport(caps),
+		lsp.HasImplementationSupport(caps),
+		lsp.HasDocumentHighlightSupport(caps),
+		lsp.HasFoldingRangeSupport(caps),
+		lsp.HasSelectionRangeSupport(caps),
+		lsp.HasLinkedEditingRangeSupport(caps),
+		lsp.HasPrepareRenameSupport(caps),
 	)
 
 	if lsp.HasDefinitionSupport(caps) {
@@ -602,6 +610,299 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 		})
 	} else {
 		coreLogger.Info("Skipping 'semantic_tokens' tool — LSP lacks semanticTokens capability")
+	}
+
+	if lsp.HasSignatureHelpSupport(caps) {
+		signatureHelpTool := mcp.NewTool("signature_help",
+			mcp.WithDescription("Get parameter signature help (function signatures, parameter docs, active parameter) for a call site at the specified position. Optional triggerCharacter/triggerKind/isRetrigger arguments exercise the LSP's SignatureHelpContext branches."),
+			mcp.WithTitleAnnotation("Signature Help"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath",
+				mcp.Required(),
+				mcp.Description("Path to the file"),
+			),
+			mcp.WithNumber("line",
+				mcp.Required(),
+				mcp.Description("Line number (1-indexed)"),
+			),
+			mcp.WithNumber("column",
+				mcp.Required(),
+				mcp.Description("Column number (1-indexed)"),
+			),
+			mcp.WithString("triggerCharacter",
+				mcp.Description("Character that triggered signature help (e.g. '(' or ','). When set, triggerKind defaults to 'trigger'."),
+			),
+			mcp.WithString("triggerKind",
+				mcp.Description("How signature help was triggered: 'invoked' (1), 'trigger' (2), or 'content' (3). Defaults to 'invoked' unless triggerCharacter is set."),
+			),
+			mcp.WithBoolean("isRetrigger",
+				mcp.Description("True if signature help was already showing when re-triggered"),
+				mcp.DefaultBool(false),
+			),
+		)
+
+		s.addTool(signatureHelpTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			line, err := request.RequireInt("line")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			column, err := request.RequireInt("column")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			triggerCharacter := request.GetString("triggerCharacter", "")
+			triggerKind := request.GetString("triggerKind", "")
+			isRetrigger := request.GetBool("isRetrigger", false)
+
+			coreLogger.Debug("Executing signature_help for %s:%d:%d (trigger=%q kind=%q retrigger=%v)", filePath, line, column, triggerCharacter, triggerKind, isRetrigger)
+			text, err := tools.GetSignatureHelp(s.ctx, s.lspClient, filePath, line, column, triggerCharacter, triggerKind, isRetrigger)
+			if err != nil {
+				coreLogger.Error("Failed to get signature help: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to get signature help: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+	} else {
+		coreLogger.Info("Skipping 'signature_help' tool — LSP lacks signatureHelp capability")
+	}
+
+	if lsp.HasTypeDefinitionSupport(caps) {
+		typeDefinitionTool := mcp.NewTool("type_definition",
+			mcp.WithDescription("Resolve the type definition (not value definition) of the symbol at the given file/line/column."),
+			mcp.WithTitleAnnotation("Go to Type Definition"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the file")),
+			mcp.WithNumber("line", mcp.Required(), mcp.Description("Line number (1-indexed)")),
+			mcp.WithNumber("column", mcp.Required(), mcp.Description("Column number (1-indexed)")),
+		)
+		s.addTool(typeDefinitionTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			line, err := request.RequireInt("line")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			column, err := request.RequireInt("column")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			coreLogger.Debug("Executing type_definition for %s:%d:%d", filePath, line, column)
+			text, err := tools.GetTypeDefinition(s.ctx, s.lspClient, filePath, line, column)
+			if err != nil {
+				coreLogger.Error("Failed to get type definition: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to get type definition: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+	} else {
+		coreLogger.Info("Skipping 'type_definition' tool — LSP lacks typeDefinition capability")
+	}
+
+	if lsp.HasImplementationSupport(caps) {
+		implementationTool := mcp.NewTool("implementation",
+			mcp.WithDescription("Resolve the implementation location(s) of the interface/abstract symbol at the given file/line/column."),
+			mcp.WithTitleAnnotation("Go to Implementation"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the file")),
+			mcp.WithNumber("line", mcp.Required(), mcp.Description("Line number (1-indexed)")),
+			mcp.WithNumber("column", mcp.Required(), mcp.Description("Column number (1-indexed)")),
+		)
+		s.addTool(implementationTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			line, err := request.RequireInt("line")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			column, err := request.RequireInt("column")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			coreLogger.Debug("Executing implementation for %s:%d:%d", filePath, line, column)
+			text, err := tools.GetImplementation(s.ctx, s.lspClient, filePath, line, column)
+			if err != nil {
+				coreLogger.Error("Failed to get implementation: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to get implementation: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+	} else {
+		coreLogger.Info("Skipping 'implementation' tool — LSP lacks implementation capability")
+	}
+
+	if lsp.HasDocumentHighlightSupport(caps) {
+		documentHighlightTool := mcp.NewTool("document_highlight",
+			mcp.WithDescription("Return the in-file highlight ranges for the symbol at the given position, grouped by kind (Write for declarations, Read for accesses, Text for plain references)."),
+			mcp.WithTitleAnnotation("Document Highlights"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the file")),
+			mcp.WithNumber("line", mcp.Required(), mcp.Description("Line number (1-indexed)")),
+			mcp.WithNumber("column", mcp.Required(), mcp.Description("Column number (1-indexed)")),
+		)
+		s.addTool(documentHighlightTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			line, err := request.RequireInt("line")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			column, err := request.RequireInt("column")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			coreLogger.Debug("Executing document_highlight for %s:%d:%d", filePath, line, column)
+			text, err := tools.GetDocumentHighlights(s.ctx, s.lspClient, filePath, line, column)
+			if err != nil {
+				coreLogger.Error("Failed to get document highlights: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to get document highlights: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+	} else {
+		coreLogger.Info("Skipping 'document_highlight' tool — LSP lacks documentHighlight capability")
+	}
+
+	if lsp.HasPrepareRenameSupport(caps) {
+		prepareRenameTool := mcp.NewTool("prepare_rename",
+			mcp.WithDescription("Probe whether the symbol at the given position is renameable; returns the range that would be renamed plus an optional placeholder. Exposed standalone for LSP verification — rename_symbol does not chain through this."),
+			mcp.WithTitleAnnotation("Prepare Rename"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the file")),
+			mcp.WithNumber("line", mcp.Required(), mcp.Description("Line number (1-indexed)")),
+			mcp.WithNumber("column", mcp.Required(), mcp.Description("Column number (1-indexed)")),
+		)
+		s.addTool(prepareRenameTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			line, err := request.RequireInt("line")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			column, err := request.RequireInt("column")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			coreLogger.Debug("Executing prepare_rename for %s:%d:%d", filePath, line, column)
+			text, err := tools.PrepareRename(s.ctx, s.lspClient, filePath, line, column)
+			if err != nil {
+				coreLogger.Error("Failed to prepare rename: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to prepare rename: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+	} else {
+		coreLogger.Info("Skipping 'prepare_rename' tool — LSP lacks prepareProvider sub-capability")
+	}
+
+	if lsp.HasFoldingRangeSupport(caps) {
+		foldingRangeTool := mcp.NewTool("folding_range",
+			mcp.WithDescription("Return all foldable ranges in a file, each rendered as L<start>-<end> plus the first line of the covered text."),
+			mcp.WithTitleAnnotation("Folding Ranges"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the file")),
+		)
+		s.addTool(foldingRangeTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			coreLogger.Debug("Executing folding_range for %s", filePath)
+			text, err := tools.GetFoldingRanges(s.ctx, s.lspClient, filePath)
+			if err != nil {
+				coreLogger.Error("Failed to get folding ranges: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to get folding ranges: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+	} else {
+		coreLogger.Info("Skipping 'folding_range' tool — LSP lacks foldingRange capability")
+	}
+
+	if lsp.HasSelectionRangeSupport(caps) {
+		selectionRangeTool := mcp.NewTool("selection_range",
+			mcp.WithDescription("Return the smart-expand selection chain (outermost-first) for a single position. Each level is rendered as L<start>-<end> plus the first line of the covered text."),
+			mcp.WithTitleAnnotation("Selection Range"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the file")),
+			mcp.WithNumber("line", mcp.Required(), mcp.Description("Line number (1-indexed)")),
+			mcp.WithNumber("column", mcp.Required(), mcp.Description("Column number (1-indexed)")),
+		)
+		s.addTool(selectionRangeTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			line, err := request.RequireInt("line")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			column, err := request.RequireInt("column")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			coreLogger.Debug("Executing selection_range for %s:%d:%d", filePath, line, column)
+			text, err := tools.GetSelectionRange(s.ctx, s.lspClient, filePath, line, column)
+			if err != nil {
+				coreLogger.Error("Failed to get selection range: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to get selection range: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+	} else {
+		coreLogger.Info("Skipping 'selection_range' tool — LSP lacks selectionRange capability")
+	}
+
+	if lsp.HasLinkedEditingRangeSupport(caps) {
+		linkedEditingRangeTool := mcp.NewTool("linked_editing_range",
+			mcp.WithDescription("Return the set of ranges that should be edited together with the symbol at the given position (e.g. matching JSX open/close tags). Returns null explicitly when no linked region exists."),
+			mcp.WithTitleAnnotation("Linked Editing Range"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the file")),
+			mcp.WithNumber("line", mcp.Required(), mcp.Description("Line number (1-indexed)")),
+			mcp.WithNumber("column", mcp.Required(), mcp.Description("Column number (1-indexed)")),
+		)
+		s.addTool(linkedEditingRangeTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			line, err := request.RequireInt("line")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			column, err := request.RequireInt("column")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			coreLogger.Debug("Executing linked_editing_range for %s:%d:%d", filePath, line, column)
+			text, err := tools.GetLinkedEditingRange(s.ctx, s.lspClient, filePath, line, column)
+			if err != nil {
+				coreLogger.Error("Failed to get linked editing range: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to get linked editing range: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+	} else {
+		coreLogger.Info("Skipping 'linked_editing_range' tool — LSP lacks linkedEditingRange capability")
 	}
 
 	if len(s.config.disabledTools) > 0 {

@@ -85,3 +85,80 @@ func HasPullDiagnosticsSupport(caps *protocol.ServerCapabilities) bool {
 	return caps.DiagnosticProvider != nil &&
 		caps.DiagnosticProvider.Value != nil
 }
+
+func HasSignatureHelpSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.SignatureHelpProvider != nil
+}
+
+func HasTypeDefinitionSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.TypeDefinitionProvider != nil &&
+		caps.TypeDefinitionProvider.Value != nil
+}
+
+func HasImplementationSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.ImplementationProvider != nil &&
+		caps.ImplementationProvider.Value != nil
+}
+
+func HasDocumentHighlightSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.DocumentHighlightProvider != nil &&
+		caps.DocumentHighlightProvider.Value != nil
+}
+
+func HasFoldingRangeSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.FoldingRangeProvider != nil &&
+		caps.FoldingRangeProvider.Value != nil
+}
+
+func HasSelectionRangeSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.SelectionRangeProvider != nil &&
+		caps.SelectionRangeProvider.Value != nil
+}
+
+func HasLinkedEditingRangeSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.LinkedEditingRangeProvider != nil &&
+		caps.LinkedEditingRangeProvider.Value != nil
+}
+
+// HasPrepareRenameSupport reports whether the server advertises rename and the
+// optional prepareProvider sub-capability. RenameProvider is interface{}; when
+// it decodes as RenameOptions the prepare flag lives there. Servers that
+// advertise rename as a bare `true` do not commit to prepareRename, so we
+// treat that case as unsupported.
+func HasPrepareRenameSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil || caps.RenameProvider == nil {
+		return false
+	}
+	switch v := caps.RenameProvider.(type) {
+	case protocol.RenameOptions:
+		return v.PrepareProvider
+	case *protocol.RenameOptions:
+		return v != nil && v.PrepareProvider
+	case map[string]any:
+		if b, ok := v["prepareProvider"].(bool); ok {
+			return b
+		}
+	}
+	return false
+}

@@ -4,6 +4,46 @@ All notable changes to this fork are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+- Eight new capability-gated MCP tools wrapping LSP handlers that the
+  Civet LSP gained in [Civet PR #2069](https://github.com/DanielXMoore/Civet/pull/2069),
+  so an agent driving the MCP can verify those handlers end-to-end
+  without a real editor:
+  - `signature_help` — parameter tooltips at a call site. Accepts
+    optional `triggerCharacter` / `triggerKind` / `isRetrigger` inputs
+    so the SignatureHelpContext branches are reachable.
+  - `type_definition` — `textDocument/typeDefinition` for the symbol
+    at a position; renders the same way as `definition_at_position`.
+  - `implementation` — `textDocument/implementation` for the symbol
+    at a position.
+  - `document_highlight` — in-file highlight ranges grouped by kind
+    (Write for declarations, Read for accesses, Text for plain refs).
+  - `prepare_rename` — probes whether a rename is allowed at a
+    position and reports the range/placeholder. Standalone for LSP
+    verification — `rename_symbol` still calls `textDocument/rename`
+    directly without chaining. Gated on the `prepareProvider`
+    sub-capability inside `RenameOptions`.
+  - `folding_range` — foldable ranges across a file (relevant for
+    Civet's whitespace-significant blocks).
+  - `selection_range` — smart-expand chain at a position, flattened
+    outermost-first.
+  - `linked_editing_range` — paired edit ranges (e.g. JSX open/close
+    tag matching); surfaces `null` explicitly rather than as an error.
+- Capability helpers: `HasSignatureHelpSupport`,
+  `HasTypeDefinitionSupport`, `HasImplementationSupport`,
+  `HasDocumentHighlightSupport`, `HasFoldingRangeSupport`,
+  `HasSelectionRangeSupport`, `HasLinkedEditingRangeSupport`, and
+  `HasPrepareRenameSupport` (introspects `RenameOptions.PrepareProvider`).
+
+### Fixed
+- `Tuple_ParameterInformation_label_Item1` now decodes from the LSP
+  wire `[start, end]` JSON array shape. The generator emitted a struct
+  with `Fld0`/`Fld1` JSON keys, so signature help responses that used
+  the offset form of `ParameterInformation.label` failed with
+  `unmarshal failed to match one of [Tuple_ParameterInformation_label_Item1 string]`.
+
 ## [v0.4.2] – 2026-05-17
 
 ### Added

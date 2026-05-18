@@ -29,18 +29,44 @@ func fmtProvider(v any) *protocol.Or_ServerCapabilities_documentFormattingProvid
 func diagProvider(v any) *protocol.Or_ServerCapabilities_diagnosticProvider {
 	return &protocol.Or_ServerCapabilities_diagnosticProvider{Value: v}
 }
+func typeDefProvider(v any) *protocol.Or_ServerCapabilities_typeDefinitionProvider {
+	return &protocol.Or_ServerCapabilities_typeDefinitionProvider{Value: v}
+}
+func implProvider(v any) *protocol.Or_ServerCapabilities_implementationProvider {
+	return &protocol.Or_ServerCapabilities_implementationProvider{Value: v}
+}
+func docHighlightProvider(v any) *protocol.Or_ServerCapabilities_documentHighlightProvider {
+	return &protocol.Or_ServerCapabilities_documentHighlightProvider{Value: v}
+}
+func foldingProvider(v any) *protocol.Or_ServerCapabilities_foldingRangeProvider {
+	return &protocol.Or_ServerCapabilities_foldingRangeProvider{Value: v}
+}
+func selectionRangeProvider(v any) *protocol.Or_ServerCapabilities_selectionRangeProvider {
+	return &protocol.Or_ServerCapabilities_selectionRangeProvider{Value: v}
+}
+func linkedEditingProvider(v any) *protocol.Or_ServerCapabilities_linkedEditingRangeProvider {
+	return &protocol.Or_ServerCapabilities_linkedEditingRangeProvider{Value: v}
+}
 
 func TestCapabilityHelpers_NilCaps(t *testing.T) {
 	checks := map[string]func(*protocol.ServerCapabilities) bool{
-		"HasDefinitionSupport":      HasDefinitionSupport,
-		"HasReferencesSupport":      HasReferencesSupport,
-		"HasHoverSupport":           HasHoverSupport,
-		"HasRenameSupport":          HasRenameSupport,
-		"HasDocumentSymbolSupport":  HasDocumentSymbolSupport,
-		"HasCodeActionSupport":      HasCodeActionSupport,
-		"HasFormattingSupport":      HasFormattingSupport,
-		"HasSemanticTokensSupport":  HasSemanticTokensSupport,
-		"HasPullDiagnosticsSupport": HasPullDiagnosticsSupport,
+		"HasDefinitionSupport":         HasDefinitionSupport,
+		"HasReferencesSupport":         HasReferencesSupport,
+		"HasHoverSupport":              HasHoverSupport,
+		"HasRenameSupport":             HasRenameSupport,
+		"HasDocumentSymbolSupport":     HasDocumentSymbolSupport,
+		"HasCodeActionSupport":         HasCodeActionSupport,
+		"HasFormattingSupport":         HasFormattingSupport,
+		"HasSemanticTokensSupport":     HasSemanticTokensSupport,
+		"HasPullDiagnosticsSupport":    HasPullDiagnosticsSupport,
+		"HasSignatureHelpSupport":      HasSignatureHelpSupport,
+		"HasTypeDefinitionSupport":     HasTypeDefinitionSupport,
+		"HasImplementationSupport":     HasImplementationSupport,
+		"HasDocumentHighlightSupport":  HasDocumentHighlightSupport,
+		"HasFoldingRangeSupport":       HasFoldingRangeSupport,
+		"HasSelectionRangeSupport":     HasSelectionRangeSupport,
+		"HasLinkedEditingRangeSupport": HasLinkedEditingRangeSupport,
+		"HasPrepareRenameSupport":      HasPrepareRenameSupport,
 	}
 	for name, fn := range checks {
 		if fn(nil) {
@@ -209,6 +235,121 @@ func TestInterfaceTypeHelpers(t *testing.T) {
 	t.Run("semantic tokens absent", func(t *testing.T) {
 		caps := &protocol.ServerCapabilities{}
 		if HasSemanticTokensSupport(caps) {
+			t.Error("want false")
+		}
+	})
+}
+
+func TestHasSignatureHelpSupport(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{SignatureHelpProvider: &protocol.SignatureHelpOptions{}}
+		if !HasSignatureHelpSupport(caps) {
+			t.Error("want true")
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		if HasSignatureHelpSupport(&protocol.ServerCapabilities{}) {
+			t.Error("want false")
+		}
+	})
+}
+
+func TestOrTypeHelpersExtra(t *testing.T) {
+	cases := []struct {
+		name string
+		fn   func(*protocol.ServerCapabilities) bool
+		yes  *protocol.ServerCapabilities
+		no   *protocol.ServerCapabilities
+	}{
+		{
+			"type definition",
+			HasTypeDefinitionSupport,
+			&protocol.ServerCapabilities{TypeDefinitionProvider: typeDefProvider(true)},
+			&protocol.ServerCapabilities{TypeDefinitionProvider: typeDefProvider(nil)},
+		},
+		{
+			"implementation",
+			HasImplementationSupport,
+			&protocol.ServerCapabilities{ImplementationProvider: implProvider(true)},
+			&protocol.ServerCapabilities{ImplementationProvider: implProvider(nil)},
+		},
+		{
+			"document highlight",
+			HasDocumentHighlightSupport,
+			&protocol.ServerCapabilities{DocumentHighlightProvider: docHighlightProvider(true)},
+			&protocol.ServerCapabilities{DocumentHighlightProvider: docHighlightProvider(nil)},
+		},
+		{
+			"folding range",
+			HasFoldingRangeSupport,
+			&protocol.ServerCapabilities{FoldingRangeProvider: foldingProvider(true)},
+			&protocol.ServerCapabilities{FoldingRangeProvider: foldingProvider(nil)},
+		},
+		{
+			"selection range",
+			HasSelectionRangeSupport,
+			&protocol.ServerCapabilities{SelectionRangeProvider: selectionRangeProvider(true)},
+			&protocol.ServerCapabilities{SelectionRangeProvider: selectionRangeProvider(nil)},
+		},
+		{
+			"linked editing range",
+			HasLinkedEditingRangeSupport,
+			&protocol.ServerCapabilities{LinkedEditingRangeProvider: linkedEditingProvider(true)},
+			&protocol.ServerCapabilities{LinkedEditingRangeProvider: linkedEditingProvider(nil)},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name+" supported", func(t *testing.T) {
+			if !c.fn(c.yes) {
+				t.Error("want true")
+			}
+		})
+		t.Run(c.name+" Value nil", func(t *testing.T) {
+			if c.fn(c.no) {
+				t.Error("want false")
+			}
+		})
+		t.Run(c.name+" absent", func(t *testing.T) {
+			if c.fn(&protocol.ServerCapabilities{}) {
+				t.Error("want false")
+			}
+		})
+	}
+}
+
+func TestHasPrepareRenameSupport(t *testing.T) {
+	t.Run("absent", func(t *testing.T) {
+		if HasPrepareRenameSupport(&protocol.ServerCapabilities{}) {
+			t.Error("want false")
+		}
+	})
+	t.Run("bare true (rename advertised without prepare)", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{RenameProvider: true}
+		if HasPrepareRenameSupport(caps) {
+			t.Error("want false")
+		}
+	})
+	t.Run("RenameOptions with prepareProvider", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{RenameProvider: protocol.RenameOptions{PrepareProvider: true}}
+		if !HasPrepareRenameSupport(caps) {
+			t.Error("want true")
+		}
+	})
+	t.Run("RenameOptions without prepareProvider", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{RenameProvider: protocol.RenameOptions{}}
+		if HasPrepareRenameSupport(caps) {
+			t.Error("want false")
+		}
+	})
+	t.Run("decoded as map with prepareProvider true", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{RenameProvider: map[string]any{"prepareProvider": true}}
+		if !HasPrepareRenameSupport(caps) {
+			t.Error("want true")
+		}
+	})
+	t.Run("decoded as map without prepareProvider", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{RenameProvider: map[string]any{}}
+		if HasPrepareRenameSupport(caps) {
 			t.Error("want false")
 		}
 	})

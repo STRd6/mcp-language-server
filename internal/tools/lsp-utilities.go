@@ -156,21 +156,47 @@ func GetFullDefinition(ctx context.Context, client *lsp.Client, startLocation pr
 	return "", protocol.Location{}, fmt.Errorf("symbol not found")
 }
 
-// GetLineRangesToDisplay determines which lines should be displayed for a set of locations
+// GetLineRangesToDisplay determines which lines should be displayed for a set
+// of locations. Caches `textDocument/documentSymbol` per URI so a 17k-diagnostic
+// file (civet-lsp on parser.hera with broken types) does one LSP round-trip
+// instead of one-per-location — previously this loop hammered the LSP with N
+// identical documentSymbol RPCs and hung for minutes.
 func GetLineRangesToDisplay(ctx context.Context, client *lsp.Client, locations []protocol.Location, totalLines int, contextLines int) (map[int]bool, error) {
-	// Set to track which lines need to be displayed
 	linesToShow := make(map[int]bool)
 
-	// For each location, get its container and add relevant lines
-	for _, loc := range locations {
-		// Use GetFullDefinition to find container
-		_, containerLoc, err := GetFullDefinition(ctx, client, loc)
-		if err != nil {
-			// If container not found, just use the location's line
-			refLine := int(loc.Range.Start.Line)
-			linesToShow[refLine] = true
+	// One documentSymbol fetch per unique URI. An entry in the cache with
+	// nil/empty symbols means "we tried and got nothing" — we don't retry.
+	type cacheEntry struct {
+		symbols []protocol.DocumentSymbolResult
+		fetched bool
+	}
+	symbolCache := map[protocol.DocumentUri]*cacheEntry{}
 
-			// Add context lines
+	for _, loc := range locations {
+		entry, ok := symbolCache[loc.URI]
+		if !ok {
+			entry = &cacheEntry{}
+			symParams := protocol.DocumentSymbolParams{
+				TextDocument: protocol.TextDocumentIdentifier{URI: loc.URI},
+			}
+			if symResult, err := client.DocumentSymbol(ctx, symParams); err == nil {
+				if syms, err := symResult.Results(); err == nil {
+					entry.symbols = syms
+				}
+			}
+			entry.fetched = true
+			symbolCache[loc.URI] = entry
+		}
+
+		containerRange, found := findContainingSymbolRange(entry.symbols, loc.Range.Start)
+
+		refLine := int(loc.Range.Start.Line)
+		if refLine >= 0 && refLine < totalLines {
+			linesToShow[refLine] = true
+		}
+
+		if !found {
+			// No container — just show context around the reference itself.
 			for i := refLine - contextLines; i <= refLine+contextLines; i++ {
 				if i >= 0 && i < totalLines {
 					linesToShow[i] = true
@@ -179,23 +205,16 @@ func GetLineRangesToDisplay(ctx context.Context, client *lsp.Client, locations [
 			continue
 		}
 
-		// Add container start and end lines. Bounds-check so an
-		// out-of-range LSP position can't poison the map (the map itself
-		// tolerates any key, but keeping the guard here makes the contract
-		// obvious alongside the loop below).
-		containerStart := int(containerLoc.Range.Start.Line)
-		containerEnd := int(containerLoc.Range.End.Line)
+		// Bounds-check container line numbers (LSPs occasionally report
+		// out-of-range positions; keeping the guard explicit at the call
+		// site documents the contract).
+		containerStart := int(containerRange.Start.Line)
+		containerEnd := int(containerRange.End.Line)
 		if containerStart >= 0 && containerStart < totalLines {
 			linesToShow[containerStart] = true
 		}
 
-		// Add the reference line
-		refLine := int(loc.Range.Start.Line)
-		if refLine >= 0 && refLine < totalLines {
-			linesToShow[refLine] = true
-		}
-
-		// Add context lines around the reference
+		// Add context lines around the reference, clamped to the container.
 		for i := refLine - contextLines; i <= refLine+contextLines; i++ {
 			if i >= 0 && i < totalLines && i >= containerStart && i <= containerEnd {
 				linesToShow[i] = true
@@ -204,4 +223,27 @@ func GetLineRangesToDisplay(ctx context.Context, client *lsp.Client, locations [
 	}
 
 	return linesToShow, nil
+}
+
+// findContainingSymbolRange walks symbols to find the symbol whose range
+// contains position. Matches the original GetFullDefinition semantics: at
+// each level, the first top-level symbol that contains the position wins
+// (outer class beats inner method); children are only consulted when no
+// top-level symbol at this level matches. Pure Go — no LSP RPC.
+func findContainingSymbolRange(symbols []protocol.DocumentSymbolResult, position protocol.Position) (protocol.Range, bool) {
+	for _, sym := range symbols {
+		if containsPosition(sym.GetRange(), position) {
+			return sym.GetRange(), true
+		}
+		if ds, ok := sym.(*protocol.DocumentSymbol); ok && len(ds.Children) > 0 {
+			childSymbols := make([]protocol.DocumentSymbolResult, len(ds.Children))
+			for i := range ds.Children {
+				childSymbols[i] = &ds.Children[i]
+			}
+			if r, found := findContainingSymbolRange(childSymbols, position); found {
+				return r, true
+			}
+		}
+	}
+	return protocol.Range{}, false
 }

@@ -740,3 +740,12 @@ func (c *Client) GetFileDiagnostics(uri protocol.DocumentUri) []protocol.Diagnos
 
 	return c.diagnostics[uri]
 }
+
+// SetFileDiagnostics overwrites the cached diagnostics for uri, e.g. with an
+// authoritative pull-mode result that supersedes the lagging push cache.
+func (c *Client) SetFileDiagnostics(uri protocol.DocumentUri, diagnostics []protocol.Diagnostic) {
+	c.diagnosticsMu.Lock()
+	defer c.diagnosticsMu.Unlock()
+
+	c.diagnostics[uri] = diagnostics
+}

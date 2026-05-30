@@ -46,8 +46,12 @@ func GetDiagnosticsForFile(ctx context.Context, client *lsp.Client, filePath str
 		diagParams := protocol.DocumentDiagnosticParams{
 			TextDocument: protocol.TextDocumentIdentifier{URI: uri},
 		}
-		if _, err = client.Diagnostic(ctx, diagParams); err != nil {
-			toolsLogger.Debug("Pull-mode diagnostic request failed: %v", err)
+		if report, derr := client.Diagnostic(ctx, diagParams); derr != nil {
+			toolsLogger.Debug("Pull-mode diagnostic request failed: %v", derr)
+		} else if full, ok := report.Value.(protocol.RelatedFullDocumentDiagnosticReport); ok {
+			// Pull results are computed at request time — authoritative and
+			// race-free — so prefer them over the lagging push cache.
+			client.SetFileDiagnostics(uri, full.Items)
 		}
 	}
 

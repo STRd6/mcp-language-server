@@ -4,6 +4,17 @@ All notable changes to this fork are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.4] – 2026-05-30
+
+### Fixed
+- `get_diagnostics`: for pull-capable servers, `GetDiagnosticsForFile`
+  issued the `textDocument/diagnostic` request but discarded the
+  response and read the push cache, which can lag the edit that
+  triggered the call. The pull report's items (computed at request
+  time, so authoritative and race-free) are now stored via the new
+  `Client.SetFileDiagnostics` and preferred over the cache. No-op for
+  push-only servers.
+
 ## [v0.4.3] – 2026-05-18
 
 ### Added

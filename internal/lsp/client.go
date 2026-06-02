@@ -3,6 +3,7 @@ package lsp
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -594,6 +595,12 @@ func progressTokenString(t protocol.ProgressToken) string {
 type OpenFileInfo struct {
 	Version int32
 	URI     protocol.DocumentUri
+	// ContentHash is the sha256 of the content last sent to the server (via
+	// didOpen or didChange). Used to skip redundant didChange notifications
+	// when on-disk content is unchanged — re-sending identical content is
+	// wasted churn and can perturb some servers (e.g. ts-server drops
+	// cross-file diagnostics on an isolated no-op didChange).
+	ContentHash [32]byte
 }
 
 func (c *Client) OpenFile(ctx context.Context, filepath string) error {
@@ -627,8 +634,9 @@ func (c *Client) OpenFile(ctx context.Context, filepath string) error {
 
 	c.openFilesMu.Lock()
 	c.openFiles[string(docURI)] = &OpenFileInfo{
-		Version: 1,
-		URI:     docURI,
+		Version:     1,
+		URI:         docURI,
+		ContentHash: sha256.Sum256(content),
 	}
 	c.openFilesMu.Unlock()
 
@@ -655,6 +663,7 @@ func (c *Client) NotifyChange(ctx context.Context, filepath string) error {
 	// Increment version
 	fileInfo.Version++
 	version := fileInfo.Version
+	fileInfo.ContentHash = sha256.Sum256(content)
 	c.openFilesMu.Unlock()
 
 	params := protocol.DidChangeTextDocumentParams{
@@ -674,6 +683,43 @@ func (c *Client) NotifyChange(ctx context.Context, filepath string) error {
 	}
 
 	return c.Notify(ctx, "textDocument/didChange", params)
+}
+
+// NotifyChangeIfChanged sends a didChange only when the file's current on-disk
+// content differs from what the server was last told (via didOpen/didChange).
+// It reports whether a notification was sent. Use this to sync an open document
+// before querying it: if an external editor wrote to disk the server's overlay
+// is stale and must be refreshed, but re-sending identical content is wasted
+// churn (and some servers drop cross-file diagnostics on a no-op didChange).
+// The file must already be open.
+func (c *Client) NotifyChangeIfChanged(ctx context.Context, filepath string) (bool, error) {
+	docURI := protocol.URIFromPath(filepath)
+
+	content, err := os.ReadFile(filepath)
+	if err != nil {
+		return false, fmt.Errorf("error reading file: %w", err)
+	}
+
+	c.openFilesMu.RLock()
+	fileInfo, isOpen := c.openFiles[string(docURI)]
+	var lastHash [32]byte
+	if isOpen {
+		lastHash = fileInfo.ContentHash
+	}
+	c.openFilesMu.RUnlock()
+
+	if !isOpen {
+		return false, fmt.Errorf("cannot notify change for unopened file: %s", filepath)
+	}
+
+	if sha256.Sum256(content) == lastHash {
+		return false, nil // Server already has this content.
+	}
+
+	if err := c.NotifyChange(ctx, filepath); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (c *Client) CloseFile(ctx context.Context, filepath string) error {

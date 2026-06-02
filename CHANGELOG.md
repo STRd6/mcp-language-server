@@ -4,6 +4,22 @@ All notable changes to this fork are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.5] – 2026-06-02
+
+### Fixed
+- Stale diagnostics/edits for already-open documents. The MCP never sent
+  `textDocument/didChange` for files it touched, so once a doc was opened
+  the server kept analyzing its original `didOpen` content and ignored
+  on-disk edits (`didChangeWatchedFiles` does not update open docs). Both
+  `get_diagnostics` and `edit_file` now sync the server's overlay:
+  `GetDiagnosticsForFile` pushes the current disk content before querying
+  (via the new `Client.NotifyChangeIfChanged`, which sends a `didChange`
+  only when the content actually differs from what the server was last
+  told — a no-op resend can make some servers drop cross-file
+  diagnostics), and `ApplyTextEdits` notifies the server after writing.
+  For push-only servers a real sync now waits for the next publish rather
+  than reading the stale cache.
+
 ## [v0.4.4] – 2026-05-30
 
 ### Fixed

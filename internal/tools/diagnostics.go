@@ -21,9 +21,22 @@ func GetDiagnosticsForFile(ctx context.Context, client *lsp.Client, filePath str
 		}
 	}
 
-	err := client.OpenFile(ctx, filePath)
-	if err != nil {
-		return "", fmt.Errorf("could not open file: %v", err)
+	// If the doc is already open, the server owns its content via didChange and
+	// ignores on-disk edits (didChangeWatchedFiles doesn't touch open docs).
+	// Push the current disk content so pull/push diagnostics analyze the latest
+	// version instead of a stale overlay — but only when it actually changed,
+	// since a no-op didChange is wasted churn that some servers mishandle.
+	notified := false
+	if client.IsFileOpen(filePath) {
+		changed, err := client.NotifyChangeIfChanged(ctx, filePath)
+		if err != nil {
+			return "", fmt.Errorf("could not sync file: %v", err)
+		}
+		notified = changed
+	} else {
+		if err := client.OpenFile(ctx, filePath); err != nil {
+			return "", fmt.Errorf("could not open file: %v", err)
+		}
 	}
 
 	// Convert the file path to URI format
@@ -34,15 +47,24 @@ func GetDiagnosticsForFile(ctx context.Context, client *lsp.Client, filePath str
 	// on the Civet repo takes ~10s for its first publish). Returns as soon
 	// as the first publish lands; settle window (150ms) absorbs follow-up
 	// republishes some servers send after a project-wide rescan.
-	gotPublish := client.WaitForDiagnostics(ctx, uri, 30*time.Second, 150*time.Millisecond)
+	hasPull := lsp.HasPullDiagnosticsSupport(client.ServerCapabilities())
+	gotPublish := true
+	if notified && !hasPull {
+		// We just sent a didChange and the server can't be pulled, so any
+		// cached publish is stale. WaitForDiagnostics would return immediately
+		// off that stale cache (hasExisting), so wait for the NEXT publish.
+		client.WaitForNextDiagnostics(ctx, uri, 30*time.Second, 150*time.Millisecond)
+	} else {
+		gotPublish = client.WaitForDiagnostics(ctx, uri, 30*time.Second, 150*time.Millisecond)
+	}
 
 	// Only attempt pull-mode (textDocument/diagnostic) for servers that
 	// actually advertised a diagnosticProvider. Push-only servers (e.g.
-	// civet-lsp) reject with -32601, but the request still rides their
+	// gopls, ts-server) reject with -32601, but the request still rides their
 	// request queue — on a busy LSP (cold TS typecheck on a real project)
 	// that response can be blocked for many seconds behind the work
 	// producing the publishDiagnostics we already got.
-	if lsp.HasPullDiagnosticsSupport(client.ServerCapabilities()) {
+	if hasPull {
 		diagParams := protocol.DocumentDiagnosticParams{
 			TextDocument: protocol.TextDocumentIdentifier{URI: uri},
 		}

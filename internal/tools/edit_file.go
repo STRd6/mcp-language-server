@@ -122,6 +122,16 @@ func ApplyTextEdits(ctx context.Context, client *lsp.Client, filePath string, ed
 		return "", fmt.Errorf("failed to apply text edits: %v", err)
 	}
 
+	// ApplyWorkspaceEdit only writes disk; the server owns the open doc's
+	// content via didChange and won't see the write otherwise. Sync the
+	// overlay so the next diagnostics query analyzes the edited content.
+	// OpenFile above guarantees the file is tracked, so NotifyChange is valid.
+	if err := client.NotifyChange(ctx, filePath); err != nil {
+		// Non-fatal: the disk write succeeded; the server will catch up via the
+		// watcher. Log and continue so the tool still reports success.
+		toolsLogger.Debug("post-edit NotifyChange failed for %s: %v", filePath, err)
+	}
+
 	if allInserts && insertedLines > 0 {
 		noun := "lines"
 		if insertedLines == 1 {

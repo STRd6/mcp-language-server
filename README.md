@@ -201,7 +201,7 @@ This is an [MCP](https://modelcontextprotocol.io/introduction) server that runs 
 In addition to `--workspace` and `--lsp`:
 
 - `--disable-tools=tool1,tool2,...` — suppress specific tools after registration. Useful when pairing with another tool (e.g. disabling `edit_file` when running alongside `aider`).
-- `--idle-timeout=10m` — shut down after this duration with no MCP traffic. Default `0` (disabled). Useful when the parent editor doesn't clean up its MCP children on exit.
+- `--idle-timeout=10m` — suspend the LSP subprocess and release all file watches after this duration with no MCP traffic; the next tool call restarts the LSP transparently. Default `0` (disabled). Useful when the parent editor keeps idle sessions (and their MCP children) alive indefinitely — each idle session otherwise pins an LSP process plus its inotify watches.
 - `--lsp-init-async` — initialize the LSP in a background goroutine so `ServeStdio` starts immediately. Capability-gated tools then register after the handshake via `tools/list_changed`, so the client must honor that notification (Claude Desktop / Cursor do; some MCP clients only read `tools/list` once at startup). Default is synchronous init so all tools appear in the first `tools/list` response.
 - `--config=/path/to/init.json` — pass per-LSP `initializationOptions`. The file is a JSON object keyed by LSP binary name; the matching entry becomes the LSP's `initializationOptions`. Solves cases like `rust-analyzer` needing `linkedProjects` or `gopls` needing specific build flags.
 

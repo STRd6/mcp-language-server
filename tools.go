@@ -11,13 +11,17 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// addTool registers a tool whose handler blocks on waitForLSP. ServeStdio
+// addTool registers a tool whose handler blocks on acquireLSP. ServeStdio
 // starts before the LSP handshake completes (see start()), so tool calls
 // that arrive during LSP startup wait here instead of erroring or stalling
-// the whole MCP connection.
+// the whole MCP connection. acquireLSP also restarts the LSP if the idle
+// timeout suspended it, and pins it against suspension until the handler
+// returns.
 func (s *mcpServer) addTool(tool mcp.Tool, handler server.ToolHandlerFunc) {
 	s.mcpServer.AddTool(tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		if err := s.waitForLSP(ctx); err != nil {
+		release, err := s.acquireLSP(ctx)
+		defer release()
+		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("LSP not ready: %v", err)), nil
 		}
 		return handler(ctx, request)

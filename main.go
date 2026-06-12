@@ -59,9 +59,20 @@ type mcpServer struct {
 	// ServeStdio can start answering MCP protocol traffic immediately
 	// before slow LSPs (Kotlin/Gradle ~95s) finish their handshake. Under
 	// the default sync path lspReady is closed before ServeStdio starts,
-	// so waitForLSP returns immediately.
+	// so acquireLSP returns immediately. After an idle suspend it is
+	// replaced with a fresh open channel, closed again when the LSP has
+	// been restarted, so the gate doubles as the resume barrier.
 	lspReady   chan struct{}
 	lspInitErr error
+
+	// lspMu guards the suspend/resume state below plus mutations of
+	// lspReady/lspInitErr after startup. Tool handlers may still read
+	// lspClient without it: they only run after lspReady closes, which
+	// orders them after initializeLSP's writes.
+	lspMu          sync.Mutex
+	suspended      bool
+	activeRequests int
+	watcherCancel  context.CancelFunc
 }
 
 func printUsage() {
@@ -97,7 +108,7 @@ func parseConfig() (*config, error) {
 	flag.StringVar(&cfg.workspaceDir, "workspace", "", "Path to workspace directory")
 	flag.StringVar(&cfg.lspCommand, "lsp", "", "LSP command to run (args should be passed after --)")
 	flag.StringVar(&cfg.disabledToolStr, "disable-tools", "", "Comma-separated list of tools to disable")
-	flag.DurationVar(&cfg.idleTimeout, "idle-timeout", 0, "Shut down after this duration of no MCP traffic (e.g. 10m); 0 disables")
+	flag.DurationVar(&cfg.idleTimeout, "idle-timeout", 0, "Suspend the LSP subprocess and release all file watches after this duration of no MCP traffic (e.g. 10m); the next tool call restarts the LSP transparently. 0 disables")
 	flag.StringVar(&cfg.configFile, "config", "", "Path to a JSON file whose keys are LSP binary names and values are passed as initializationOptions for that LSP (see README)")
 	flag.BoolVar(&cfg.lspInitAsync, "lsp-init-async", false, "Initialize the LSP in a background goroutine so ServeStdio starts immediately. Capability-gated tools then register after the handshake via tools/list_changed (clients must honor it). Default: synchronous init, all tools available before ServeStdio.")
 	flag.BoolVar(&showVersion, "version", false, "Print version and exit")
@@ -185,15 +196,109 @@ func newServer(config *config) (*mcpServer, error) {
 	}, nil
 }
 
-// waitForLSP blocks until the LSP handshake has completed or ctx is done.
-// Returns the LSP initialization error (if any) so handlers can fail fast.
-func (s *mcpServer) waitForLSP(ctx context.Context) error {
+// acquireLSP blocks until the LSP handshake has completed or ctx is done,
+// restarting the LSP first if the idle timeout suspended it. It also pins
+// the LSP for the duration of the request: suspendLSP refuses to run while
+// any acquired request is in flight. The returned release func is always
+// non-nil and must be called when the request finishes.
+func (s *mcpServer) acquireLSP(ctx context.Context) (func(), error) {
+	s.lspMu.Lock()
+	s.activeRequests++
+	if s.suspended {
+		s.suspended = false
+		go s.resumeLSP(s.lspReady)
+	}
+	ready := s.lspReady
+	s.lspMu.Unlock()
+
+	release := func() {
+		s.lspMu.Lock()
+		s.activeRequests--
+		s.lspMu.Unlock()
+	}
+
+	select {
+	case <-ready:
+		s.lspMu.Lock()
+		err := s.lspInitErr
+		s.lspMu.Unlock()
+		return release, err
+	case <-ctx.Done():
+		return release, fmt.Errorf("context cancelled while waiting for LSP: %w", ctx.Err())
+	}
+}
+
+// suspendLSP shuts down the LSP subprocess and cancels the workspace
+// watcher (closing it releases every inotify watch) once the idle timeout
+// fires. The MCP connection stays up; the next tool call restarts both via
+// acquireLSP/resumeLSP. Returns false when suspension should be retried
+// later: the LSP is still initializing or a request is in flight.
+func (s *mcpServer) suspendLSP() bool {
+	s.lspMu.Lock()
+	defer s.lspMu.Unlock()
+
+	if s.suspended {
+		return true
+	}
 	select {
 	case <-s.lspReady:
-		return s.lspInitErr
-	case <-ctx.Done():
-		return fmt.Errorf("context cancelled while waiting for LSP: %w", ctx.Err())
+	default:
+		return false
 	}
+	if s.activeRequests > 0 {
+		return false
+	}
+
+	coreLogger.Info("Idle timeout (%s) reached: suspending LSP and releasing file watches", s.config.idleTimeout)
+	if s.watcherCancel != nil {
+		s.watcherCancel()
+		s.watcherCancel = nil
+	}
+	if s.lspClient != nil {
+		shutdownLSP(s.lspClient)
+		s.lspClient = nil
+	}
+	s.suspended = true
+	s.lspReady = make(chan struct{})
+	s.lspInitErr = nil
+	return true
+}
+
+// resumeLSP restarts the LSP subprocess and workspace watcher after an
+// idle suspend, then unblocks every request gated on ready. Tools are not
+// re-registered: the same LSP binary is assumed to advertise the same
+// capabilities it did at startup. On failure the waiting requests fail
+// fast and the next suspend/acquire cycle retries the restart.
+func (s *mcpServer) resumeLSP(ready chan struct{}) {
+	coreLogger.Info("Tool call received while suspended, restarting LSP")
+	err := s.initializeLSP()
+	s.lspMu.Lock()
+	s.lspInitErr = err
+	if err != nil {
+		// A partial init can leave a live watcher or subprocess behind;
+		// tear both down and return to suspended so the next tool call
+		// retries the restart. Waiters on ready still fail fast with err;
+		// the retry gates on a fresh channel.
+		if s.watcherCancel != nil {
+			s.watcherCancel()
+			s.watcherCancel = nil
+		}
+		if s.lspClient != nil {
+			if closeErr := s.lspClient.Close(); closeErr != nil {
+				coreLogger.Error("Failed to close LSP client after failed restart: %v", closeErr)
+			}
+			s.lspClient = nil
+		}
+		s.suspended = true
+		s.lspReady = make(chan struct{})
+	}
+	s.lspMu.Unlock()
+	if err != nil {
+		coreLogger.Error("LSP restart after idle suspend failed: %v", err)
+	} else {
+		coreLogger.Info("LSP restarted after idle suspend")
+	}
+	close(ready)
 }
 
 func (s *mcpServer) initializeLSP() error {
@@ -216,19 +321,32 @@ func (s *mcpServer) initializeLSP() error {
 	s.capabilities = &initResult.Capabilities
 	coreLogger.Debug("Server capabilities: %+v", initResult.Capabilities)
 
-	go s.workspaceWatcher.WatchWorkspace(s.ctx, s.config.workspaceDir)
+	// The watcher gets its own cancellable context so suspendLSP can stop
+	// it (closing the fsnotify watcher releases every inotify watch)
+	// without tearing down the whole server.
+	watcherCtx, watcherCancel := context.WithCancel(s.ctx)
+	s.watcherCancel = watcherCancel
+	go s.workspaceWatcher.WatchWorkspace(watcherCtx, s.config.workspaceDir)
 	return client.WaitForServerReady(s.ctx)
 }
 
-func (s *mcpServer) start(onIdle func()) error {
+func (s *mcpServer) start() error {
 	opts := []server.ServerOption{
 		server.WithLogging(),
 		server.WithRecovery(),
 	}
-	if s.config.idleTimeout > 0 && onIdle != nil {
-		timer := time.AfterFunc(s.config.idleTimeout, func() {
-			coreLogger.Info("Idle timeout (%s) reached, initiating shutdown", s.config.idleTimeout)
-			onIdle()
+	if s.config.idleTimeout > 0 {
+		// On idle, suspend the LSP and watcher rather than exiting: stdio
+		// MCP clients don't respawn a dead server, so exiting would cost
+		// the session its language server permanently. acquireLSP restarts
+		// everything on the next tool call. If suspension can't run yet
+		// (LSP still initializing, request in flight), retry one timeout
+		// later.
+		var timer *time.Timer
+		timer = time.AfterFunc(s.config.idleTimeout, func() {
+			if !s.suspendLSP() {
+				timer.Reset(s.config.idleTimeout)
+			}
 		})
 		hooks := &server.Hooks{}
 		hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
@@ -341,7 +459,7 @@ func main() {
 		}
 	}()
 
-	if err := server.start(func() { cleanup(server, done) }); err != nil {
+	if err := server.start(); err != nil {
 		coreLogger.Error("Server error: %v", err)
 		cleanup(server, done)
 		os.Exit(1)
@@ -371,45 +489,13 @@ func cleanup(s *mcpServer, done chan struct{}) {
 func runCleanup(s *mcpServer, done chan struct{}) {
 	coreLogger.Info("Cleanup initiated for PID: %d", os.Getpid())
 
-	// Create a context with timeout for shutdown operations
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	s.lspMu.Lock()
+	client := s.lspClient
+	s.lspMu.Unlock()
 
-	if s.lspClient != nil {
-		coreLogger.Info("Closing open files")
-		s.lspClient.CloseAllFiles(ctx)
-
-		// Create a shorter timeout context for the shutdown request
-		shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 500*time.Millisecond)
-		defer shutdownCancel()
-
-		// Run shutdown in a goroutine with timeout to avoid blocking if LSP doesn't respond
-		shutdownDone := make(chan struct{})
-		go func() {
-			coreLogger.Info("Sending shutdown request")
-			if err := s.lspClient.Shutdown(shutdownCtx); err != nil {
-				coreLogger.Error("Shutdown request failed: %v", err)
-			}
-			close(shutdownDone)
-		}()
-
-		// Wait for shutdown with timeout
-		select {
-		case <-shutdownDone:
-			coreLogger.Info("Shutdown request completed")
-		case <-time.After(1 * time.Second):
-			coreLogger.Warn("Shutdown request timed out, proceeding with exit")
-		}
-
-		coreLogger.Info("Sending exit notification")
-		if err := s.lspClient.Exit(ctx); err != nil {
-			coreLogger.Error("Exit notification failed: %v", err)
-		}
-
-		coreLogger.Info("Closing LSP client")
-		if err := s.lspClient.Close(); err != nil {
-			coreLogger.Error("Failed to close LSP client: %v", err)
-		}
+	// client is nil while suspended (suspendLSP already shut it down).
+	if client != nil {
+		shutdownLSP(client)
 	}
 
 	// Send signal to the done channel
@@ -420,4 +506,49 @@ func runCleanup(s *mcpServer, done chan struct{}) {
 	}
 
 	coreLogger.Info("Cleanup completed for PID: %d", os.Getpid())
+}
+
+// shutdownLSP gracefully tears down a running LSP client: closes open
+// files, sends a shutdown request (bounded by a timeout so a wedged server
+// can't block us), then the exit notification, then closes the transport
+// and reaps the subprocess. Used by both process cleanup and idle suspend.
+func shutdownLSP(client *lsp.Client) {
+	// Create a context with timeout for shutdown operations
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	coreLogger.Info("Closing open files")
+	client.CloseAllFiles(ctx)
+
+	// Create a shorter timeout context for the shutdown request
+	shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer shutdownCancel()
+
+	// Run shutdown in a goroutine with timeout to avoid blocking if LSP doesn't respond
+	shutdownDone := make(chan struct{})
+	go func() {
+		coreLogger.Info("Sending shutdown request")
+		if err := client.Shutdown(shutdownCtx); err != nil {
+			coreLogger.Error("Shutdown request failed: %v", err)
+		}
+		close(shutdownDone)
+	}()
+
+	// Wait for shutdown with timeout
+	select {
+	case <-shutdownDone:
+		coreLogger.Info("Shutdown request completed")
+	case <-time.After(1 * time.Second):
+		coreLogger.Warn("Shutdown request timed out, proceeding with exit")
+	}
+
+	coreLogger.Info("Sending exit notification")
+	if err := client.Exit(ctx); err != nil {
+		coreLogger.Error("Exit notification failed: %v", err)
+	}
+
+	coreLogger.Info("Closing LSP client")
+	if err := client.Close(); err != nil {
+		coreLogger.Error("Failed to close LSP client: %v", err)
+	}
 }

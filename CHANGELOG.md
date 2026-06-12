@@ -4,6 +4,39 @@ All notable changes to this fork are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v0.5.0] – 2026-06-12
+
+### Changed
+- `--idle-timeout` now suspends instead of shutting down: after the
+  timeout with no MCP traffic, the LSP subprocess is gracefully stopped
+  and the filesystem watcher is closed (releasing every inotify watch),
+  while the MCP connection stays up. The next tool call transparently
+  restarts the LSP and watcher; calls that arrive mid-restart wait for
+  it. The idle timer never suspends while a tool call is in flight. The
+  previous behavior was a broken half-shutdown: cleanup killed the LSP
+  but the process lingered on its open stdin with all watches still
+  pinned and every subsequent tool call failing — editors that keep idle
+  sessions alive (e.g. Zed agent sessions) accumulated one such zombie
+  per session.
+
+### Fixed
+- File watcher: nested `.gitignore` files are now honored. The matcher
+  previously read only the workspace root's `.gitignore`, so directories
+  ignored by a nested file (e.g. `infra/.gitignore` → `cdk.out/`) were
+  recursively added to the inotify watcher — observed pinning ~290k
+  watches per server instance in one workspace and exhausting the
+  system-wide `fs.inotify.max_user_watches` limit, which silently
+  disables watching ("no space left on device") for every later
+  instance. `GitignoreMatcher` now scans the workspace for `.gitignore`
+  files at startup (pruning ignored and dot directories, so the scan is
+  milliseconds even on huge trees) and scopes each file's patterns to
+  its own directory. Cross-file negations (a nested `!pattern`
+  re-including a parent's ignore) are not supported.
+- File watcher: directory-only gitignore patterns (`dist/`) now match
+  the directory itself, not just paths beneath it. The compiled pattern
+  requires a trailing slash that bare directory paths lack, so the
+  ignored directory's own inotify watch was still being added.
+
 ## [v0.4.5] – 2026-06-02
 
 ### Fixed

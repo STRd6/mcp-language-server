@@ -533,6 +533,71 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 			}
 			return mcp.NewToolResultText(text), nil
 		})
+
+		executeCodeActionTool := mcp.NewTool("execute_code_action",
+			mcp.WithDescription("Apply a code action (quick fix, refactoring, source action) for a range in a file. Selects the action by title substring (preferred) or by index from a matching code_actions call, applies its workspace edit to disk, and executes its command if it has one."),
+			mcp.WithTitleAnnotation("Execute Code Action"),
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithString("filePath",
+				mcp.Required(),
+				mcp.Description("Path to the file"),
+			),
+			mcp.WithNumber("startLine",
+				mcp.Required(),
+				mcp.Description("Start line (1-indexed)"),
+			),
+			mcp.WithNumber("startColumn",
+				mcp.Required(),
+				mcp.Description("Start column (1-indexed)"),
+			),
+			mcp.WithNumber("endLine",
+				mcp.Required(),
+				mcp.Description("End line (1-indexed)"),
+			),
+			mcp.WithNumber("endColumn",
+				mcp.Required(),
+				mcp.Description("End column (1-indexed)"),
+			),
+			mcp.WithString("title",
+				mcp.Description("Case-insensitive substring of the action title to execute (e.g. 'organize imports'). Must match exactly one action."),
+			),
+			mcp.WithNumber("index",
+				mcp.Description("1-based index of the action as listed by code_actions with the same range. Ignored when title is set; less reliable since the list shifts as diagnostics change."),
+			),
+		)
+
+		s.addTool(executeCodeActionTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			startLine, err := request.RequireInt("startLine")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			startColumn, err := request.RequireInt("startColumn")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			endLine, err := request.RequireInt("endLine")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			endColumn, err := request.RequireInt("endColumn")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			title := request.GetString("title", "")
+			index := request.GetInt("index", 0)
+
+			coreLogger.Debug("Executing execute_code_action for %s [%d:%d-%d:%d] (title=%q index=%d)", filePath, startLine, startColumn, endLine, endColumn, title, index)
+			text, err := tools.ExecuteCodeAction(s.ctx, s.lspClient, caps, filePath, startLine, startColumn, endLine, endColumn, index, title)
+			if err != nil {
+				coreLogger.Error("Failed to execute code action: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to execute code action: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
 	} else {
 		coreLogger.Info("Skipping 'code_actions' tool — LSP lacks codeAction capability")
 	}

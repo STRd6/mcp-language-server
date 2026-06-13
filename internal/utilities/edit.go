@@ -275,3 +275,30 @@ func RangesOverlap(r1, r2 protocol.Range) bool {
 	}
 	return true
 }
+
+// WorkspaceEditTextDocumentPaths returns the filesystem paths whose text
+// content the edit modifies (Changes keys and TextDocumentEdit entries,
+// deduplicated). Create/rename/delete resource operations are excluded —
+// callers use this to didChange-sync open documents, and those operations
+// don't leave an open document to sync.
+func WorkspaceEditTextDocumentPaths(edit protocol.WorkspaceEdit) []string {
+	seen := map[string]bool{}
+	var paths []string
+	add := func(uri protocol.DocumentUri) {
+		path := uriToPath(uri)
+		if path != "" && !seen[path] {
+			seen[path] = true
+			paths = append(paths, path)
+		}
+	}
+	for uri := range edit.Changes {
+		add(uri)
+	}
+	for _, change := range edit.DocumentChanges {
+		if change.TextDocumentEdit != nil {
+			add(change.TextDocumentEdit.TextDocument.URI)
+		}
+	}
+	sort.Strings(paths)
+	return paths
+}

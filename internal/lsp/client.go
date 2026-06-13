@@ -218,6 +218,17 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string, c
 			Capabilities: protocol.ClientCapabilities{
 				Workspace: protocol.WorkspaceClientCapabilities{
 					Configuration: true,
+					// Strict servers only push edits from executeCommand-style
+					// code actions / code lenses when the client declares it
+					// handles workspace/applyEdit (the handler is registered
+					// below).
+					ApplyEdit: true,
+					WorkspaceEdit: &protocol.WorkspaceEditClientCapabilities{
+						DocumentChanges: true,
+						ResourceOperations: []protocol.ResourceOperationKind{
+							protocol.Create, protocol.Rename, protocol.Delete,
+						},
+					},
 					DidChangeConfiguration: protocol.DidChangeConfigurationClientCapabilities{
 						DynamicRegistration: true,
 					},
@@ -245,6 +256,15 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string, c
 							CodeActionKind: protocol.ClientCodeActionKindOptions{
 								ValueSet: []protocol.CodeActionKind{},
 							},
+						},
+						// code-actions.go renders isPreferred/disabled, and
+						// execute-code-action.go resolves lazy edits — servers
+						// only send any of these if advertised.
+						IsPreferredSupport: true,
+						DisabledSupport:    true,
+						DataSupport:        true,
+						ResolveSupport: &protocol.ClientCodeActionResolveOptions{
+							Properties: []string{"edit"},
 						},
 					},
 					PublishDiagnostics: protocol.PublishDiagnosticsClientCapabilities{
@@ -290,7 +310,7 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string, c
 	// immediately after the handshake reach a registered handler instead
 	// of getting a "method not found" reply that puts strict servers
 	// (Kotlin LSP, async-lsp-based servers) into a broken state.
-	c.RegisterServerRequestHandler("workspace/applyEdit", HandleApplyEdit)
+	c.RegisterServerRequestHandler("workspace/applyEdit", c.handleApplyEdit)
 	c.RegisterServerRequestHandler("workspace/configuration", HandleWorkspaceConfiguration)
 	c.RegisterServerRequestHandler("client/registerCapability", c.handleRegisterCapability)
 	c.RegisterServerRequestHandler("window/workDoneProgress/create", HandleWorkDoneProgressCreate)

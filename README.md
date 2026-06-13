@@ -231,6 +231,7 @@ Capability-gated tools (registered only if the LSP advertises the capability):
 - `rename_symbol` (destructive): rename a symbol across the project.
 - `document_symbols` (read-only): hierarchical symbol outline of a file (classes, functions, methods, etc.).
 - `code_actions` (read-only): available code actions (quick fixes, refactorings, source actions) for a range.
+- `execute_code_action` (destructive): apply a code action by title substring or index — applies its workspace edit to disk and executes its command if it has one.
 - `format_document` (destructive): format a document (or a range within it) and apply the resulting edits to disk.
 - `semantic_tokens` (read-only): full semantic-tokens response, decoded with the server's legend. Intended for debugging LSP semantic-token providers.
 - `workspace_symbols` (read-only): search symbols across the entire workspace by name (server-side fuzzy/substring matching).

@@ -24,9 +24,9 @@ func TestHandleApplyEdit_EmptyEdit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	got, err := HandleApplyEdit(params)
+	got, err := (&Client{}).handleApplyEdit(params)
 	if err != nil {
-		t.Fatalf("HandleApplyEdit: %v", err)
+		t.Fatalf("handleApplyEdit: %v", err)
 	}
 	res, ok := got.(protocol.ApplyWorkspaceEditResult)
 	if !ok {
@@ -38,7 +38,7 @@ func TestHandleApplyEdit_EmptyEdit(t *testing.T) {
 }
 
 func TestHandleApplyEdit_MalformedJSON(t *testing.T) {
-	got, err := HandleApplyEdit([]byte(`{not json`))
+	got, err := (&Client{}).handleApplyEdit([]byte(`{not json`))
 	if err == nil {
 		t.Fatalf("expected unmarshal error, got nil (result=%+v)", got)
 	}

@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/STRd6/mcp-language-server/internal/protocol"
@@ -67,7 +68,12 @@ func (c *Client) handleRegisterCapability(params json.RawMessage) (any, error) {
 	return nil, nil
 }
 
-func HandleApplyEdit(params json.RawMessage) (any, error) {
+// handleApplyEdit applies a server-pushed workspace/applyEdit to disk, then
+// didChange-syncs any touched documents the server has open. Without the sync
+// the server's overlay keeps the pre-edit content for open docs — writing to
+// disk alone doesn't update it (didChangeWatchedFiles doesn't either), the
+// same staleness edit_file/diagnostics hit before v0.4.5.
+func (c *Client) handleApplyEdit(params json.RawMessage) (any, error) {
 	var workspaceEdit protocol.ApplyWorkspaceEditParams
 	if err := json.Unmarshal(params, &workspaceEdit); err != nil {
 		return protocol.ApplyWorkspaceEditResult{Applied: false}, err
@@ -81,6 +87,15 @@ func HandleApplyEdit(params json.RawMessage) (any, error) {
 			Applied:       false,
 			FailureReason: workspaceEditFailure(err),
 		}, nil
+	}
+
+	for _, path := range utilities.WorkspaceEditTextDocumentPaths(workspaceEdit.Edit) {
+		if !c.IsFileOpen(path) {
+			continue
+		}
+		if _, err := c.NotifyChangeIfChanged(context.Background(), path); err != nil {
+			lspLogger.Error("Failed to sync %s after applyEdit: %v", path, err)
+		}
 	}
 
 	return protocol.ApplyWorkspaceEditResult{

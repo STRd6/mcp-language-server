@@ -7,6 +7,13 @@ project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `execute_code_action` tool: apply a code action for a range, selected
+  by title substring (preferred; ambiguous matches error with the
+  candidate list) or 1-based index. Applies the action's WorkspaceEdit
+  to disk, didChange-syncs touched open documents, then executes its
+  command via `workspace/executeCommand`; lazy actions are materialized
+  with `codeAction/resolve` when the server supports it. Same
+  capability gate as `code_actions`.
 - `call_hierarchy` tool: incoming calls (callers) and/or outgoing calls
   (callees) for the function/method at a position, expandable to depth
   3 with cycle detection. Gated on the `callHierarchy` capability.
@@ -26,6 +33,21 @@ project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
   removed. The previously-skipped gopls codelens integration test is
   re-enabled, finding the `go mod tidy` lens by title instead of the
   version-brittle hardcoded index it was skipped over.
+
+### Changed
+- Client capabilities now advertise `workspace.applyEdit`,
+  `workspace.workspaceEdit` (documentChanges + create/rename/delete
+  resource ops), and codeAction `isPreferred`/`disabled`/`data`/
+  `resolveSupport(edit)`. Strict servers gate command-pushed edits and
+  lazy code actions on these; previously only gopls's leniency made the
+  applyEdit path work.
+
+### Fixed
+- The `workspace/applyEdit` handler now didChange-syncs open documents
+  it touched. Previously it wrote to disk only, leaving the server's
+  overlay stale for any open file changed by an executeCommand-style
+  code action or code lens — the same staleness class fixed for
+  `edit_file`/`diagnostics` in v0.4.5.
 
 ## [v0.5.0] – 2026-06-12
 

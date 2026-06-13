@@ -396,3 +396,46 @@ func TestHasPrepareRenameSupport(t *testing.T) {
 		}
 	})
 }
+
+func TestHasCodeActionResolveSupport(t *testing.T) {
+	t.Run("nil caps", func(t *testing.T) {
+		if HasCodeActionResolveSupport(nil) {
+			t.Error("want false")
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		if HasCodeActionResolveSupport(&protocol.ServerCapabilities{}) {
+			t.Error("want false")
+		}
+	})
+	t.Run("bare true (codeAction advertised without resolve)", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{CodeActionProvider: true}
+		if HasCodeActionResolveSupport(caps) {
+			t.Error("want false")
+		}
+	})
+	t.Run("CodeActionOptions with resolveProvider", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{CodeActionProvider: protocol.CodeActionOptions{ResolveProvider: true}}
+		if !HasCodeActionResolveSupport(caps) {
+			t.Error("want true")
+		}
+	})
+	t.Run("CodeActionOptions without resolveProvider", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{CodeActionProvider: protocol.CodeActionOptions{}}
+		if HasCodeActionResolveSupport(caps) {
+			t.Error("want false")
+		}
+	})
+	t.Run("decoded as map with resolveProvider true", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{CodeActionProvider: map[string]any{"resolveProvider": true}}
+		if !HasCodeActionResolveSupport(caps) {
+			t.Error("want true")
+		}
+	})
+	t.Run("decoded as map without resolveProvider", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{CodeActionProvider: map[string]any{"codeActionKinds": []any{}}}
+		if HasCodeActionResolveSupport(caps) {
+			t.Error("want false")
+		}
+	})
+}

@@ -63,6 +63,27 @@ func HasCodeActionSupport(caps *protocol.ServerCapabilities) bool {
 	return caps.CodeActionProvider != nil
 }
 
+// HasCodeActionResolveSupport reports whether the server supports
+// codeAction/resolve. CodeActionProvider is interface{}: servers that
+// advertise resolve return CodeActionOptions (decoded as a map or typed
+// struct) with resolveProvider; a bare `true` does not commit to resolve.
+func HasCodeActionResolveSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil || caps.CodeActionProvider == nil {
+		return false
+	}
+	switch v := caps.CodeActionProvider.(type) {
+	case protocol.CodeActionOptions:
+		return v.ResolveProvider
+	case *protocol.CodeActionOptions:
+		return v != nil && v.ResolveProvider
+	case map[string]any:
+		if b, ok := v["resolveProvider"].(bool); ok {
+			return b
+		}
+	}
+	return false
+}
+
 func HasFormattingSupport(caps *protocol.ServerCapabilities) bool {
 	if caps == nil {
 		return false

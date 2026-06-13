@@ -47,6 +47,9 @@ func selectionRangeProvider(v any) *protocol.Or_ServerCapabilities_selectionRang
 func linkedEditingProvider(v any) *protocol.Or_ServerCapabilities_linkedEditingRangeProvider {
 	return &protocol.Or_ServerCapabilities_linkedEditingRangeProvider{Value: v}
 }
+func callHierarchyProvider(v any) *protocol.Or_ServerCapabilities_callHierarchyProvider {
+	return &protocol.Or_ServerCapabilities_callHierarchyProvider{Value: v}
+}
 
 func TestCapabilityHelpers_NilCaps(t *testing.T) {
 	checks := map[string]func(*protocol.ServerCapabilities) bool{
@@ -67,6 +70,9 @@ func TestCapabilityHelpers_NilCaps(t *testing.T) {
 		"HasSelectionRangeSupport":     HasSelectionRangeSupport,
 		"HasLinkedEditingRangeSupport": HasLinkedEditingRangeSupport,
 		"HasPrepareRenameSupport":      HasPrepareRenameSupport,
+		"HasWorkspaceSymbolSupport":    HasWorkspaceSymbolSupport,
+		"HasCallHierarchySupport":      HasCallHierarchySupport,
+		"HasCodeLensSupport":           HasCodeLensSupport,
 	}
 	for name, fn := range checks {
 		if fn(nil) {
@@ -254,6 +260,20 @@ func TestHasSignatureHelpSupport(t *testing.T) {
 	})
 }
 
+func TestHasCodeLensSupport(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		caps := &protocol.ServerCapabilities{CodeLensProvider: &protocol.CodeLensOptions{}}
+		if !HasCodeLensSupport(caps) {
+			t.Error("want true")
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		if HasCodeLensSupport(&protocol.ServerCapabilities{}) {
+			t.Error("want false")
+		}
+	})
+}
+
 func TestOrTypeHelpersExtra(t *testing.T) {
 	cases := []struct {
 		name string
@@ -296,6 +316,18 @@ func TestOrTypeHelpersExtra(t *testing.T) {
 			HasLinkedEditingRangeSupport,
 			&protocol.ServerCapabilities{LinkedEditingRangeProvider: linkedEditingProvider(true)},
 			&protocol.ServerCapabilities{LinkedEditingRangeProvider: linkedEditingProvider(nil)},
+		},
+		{
+			"workspace symbol",
+			HasWorkspaceSymbolSupport,
+			&protocol.ServerCapabilities{WorkspaceSymbolProvider: wsProvider(true)},
+			&protocol.ServerCapabilities{WorkspaceSymbolProvider: wsProvider(nil)},
+		},
+		{
+			"call hierarchy",
+			HasCallHierarchySupport,
+			&protocol.ServerCapabilities{CallHierarchyProvider: callHierarchyProvider(true)},
+			&protocol.ServerCapabilities{CallHierarchyProvider: callHierarchyProvider(nil)},
 		},
 	}
 	for _, c := range cases {

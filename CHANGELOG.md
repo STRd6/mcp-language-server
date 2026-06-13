@@ -4,6 +4,25 @@ All notable changes to this fork are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `call_hierarchy` tool: incoming calls (callers) and/or outgoing calls
+  (callees) for the function/method at a position, expandable to depth
+  3 with cycle detection. Gated on the `callHierarchy` capability.
+- `workspace_symbols` tool: workspace-wide symbol search via
+  `workspace/symbol` (the request `definition`/`references` already
+  used internally, now exposed directly). Server-side fuzzy/substring
+  matching; results capped by `maxResults` (default 50). Gated on the
+  `workspaceSymbol` capability.
+- `get_codelens` / `execute_codelens` tools: the implementations had
+  been sitting orphaned in `internal/tools` since the upstream fork —
+  written but never registered. Now wired up behind the `codeLens`
+  capability, with the upstream `time.Sleep(1s)` open-file hack
+  removed. The previously-skipped gopls codelens integration test is
+  re-enabled, finding the `go mod tidy` lens by title instead of the
+  version-brittle hardcoded index it was skipped over.
+
 ## [v0.5.0] – 2026-06-12
 
 ### Changed

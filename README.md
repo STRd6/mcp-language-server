@@ -233,6 +233,10 @@ Capability-gated tools (registered only if the LSP advertises the capability):
 - `code_actions` (read-only): available code actions (quick fixes, refactorings, source actions) for a range.
 - `format_document` (destructive): format a document (or a range within it) and apply the resulting edits to disk.
 - `semantic_tokens` (read-only): full semantic-tokens response, decoded with the server's legend. Intended for debugging LSP semantic-token providers.
+- `workspace_symbols` (read-only): search symbols across the entire workspace by name (server-side fuzzy/substring matching).
+- `call_hierarchy` (read-only): incoming calls (callers) and/or outgoing calls (callees) for the function at a position, expandable to depth 3.
+- `get_codelens` (read-only): list code lens hints for a file (runnable commands, reference counts, etc.).
+- `execute_codelens` (destructive): resolve and execute a code lens command by index.
 
 ## Changes from upstream
 

@@ -186,7 +186,7 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 		return
 	}
 
-	coreLogger.Info("LSP capabilities: definition=%v references=%v hover=%v rename=%v documentSymbol=%v codeAction=%v formatting=%v semanticTokens=%v signatureHelp=%v typeDefinition=%v implementation=%v documentHighlight=%v foldingRange=%v selectionRange=%v linkedEditingRange=%v prepareRename=%v",
+	coreLogger.Info("LSP capabilities: definition=%v references=%v hover=%v rename=%v documentSymbol=%v codeAction=%v formatting=%v semanticTokens=%v signatureHelp=%v typeDefinition=%v implementation=%v documentHighlight=%v foldingRange=%v selectionRange=%v linkedEditingRange=%v prepareRename=%v workspaceSymbol=%v callHierarchy=%v codeLens=%v",
 		lsp.HasDefinitionSupport(caps),
 		lsp.HasReferencesSupport(caps),
 		lsp.HasHoverSupport(caps),
@@ -203,6 +203,9 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 		lsp.HasSelectionRangeSupport(caps),
 		lsp.HasLinkedEditingRangeSupport(caps),
 		lsp.HasPrepareRenameSupport(caps),
+		lsp.HasWorkspaceSymbolSupport(caps),
+		lsp.HasCallHierarchySupport(caps),
+		lsp.HasCodeLensSupport(caps),
 	)
 
 	if lsp.HasDefinitionSupport(caps) {
@@ -907,6 +910,135 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 		})
 	} else {
 		coreLogger.Info("Skipping 'linked_editing_range' tool — LSP lacks linkedEditingRange capability")
+	}
+
+	if lsp.HasWorkspaceSymbolSupport(caps) {
+		workspaceSymbolsTool := mcp.NewTool("workspace_symbols",
+			mcp.WithDescription("Search symbols (functions, types, methods, constants, etc.) across the entire workspace by name. Matching is server-side, typically fuzzy or substring. Returns name, kind, container, and location for each match."),
+			mcp.WithTitleAnnotation("Workspace Symbol Search"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("query",
+				mcp.Required(),
+				mcp.Description("Symbol name or name fragment to search for"),
+			),
+			mcp.WithNumber("maxResults",
+				mcp.Description("Maximum number of matches to return. Defaults to 50."),
+				mcp.DefaultNumber(50),
+			),
+		)
+		s.addTool(workspaceSymbolsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			query, err := request.RequireString("query")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			maxResults := request.GetInt("maxResults", 50)
+
+			coreLogger.Debug("Executing workspace_symbols for query: %s", query)
+			text, err := tools.SearchWorkspaceSymbols(s.ctx, s.lspClient, query, maxResults)
+			if err != nil {
+				coreLogger.Error("Failed to search workspace symbols: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to search workspace symbols: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+	} else {
+		coreLogger.Info("Skipping 'workspace_symbols' tool — LSP lacks workspaceSymbol capability")
+	}
+
+	if lsp.HasCallHierarchySupport(caps) {
+		callHierarchyTool := mcp.NewTool("call_hierarchy",
+			mcp.WithDescription("Show the call hierarchy for the function/method at the given position: incoming calls (who calls it) and/or outgoing calls (what it calls), expanded to the requested depth."),
+			mcp.WithTitleAnnotation("Call Hierarchy"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the file")),
+			mcp.WithNumber("line", mcp.Required(), mcp.Description("Line number of the function/method (1-indexed)")),
+			mcp.WithNumber("column", mcp.Required(), mcp.Description("Column number of the function/method (1-indexed)")),
+			mcp.WithString("direction",
+				mcp.Description("'incoming' (callers), 'outgoing' (callees), or 'both'"),
+				mcp.DefaultString("both"),
+			),
+			mcp.WithNumber("depth",
+				mcp.Description("How many levels to expand (1-3). Defaults to 1."),
+				mcp.DefaultNumber(1),
+			),
+		)
+		s.addTool(callHierarchyTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			line, err := request.RequireInt("line")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			column, err := request.RequireInt("column")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			direction := request.GetString("direction", "both")
+			depth := request.GetInt("depth", 1)
+
+			coreLogger.Debug("Executing call_hierarchy for %s:%d:%d (direction=%s depth=%d)", filePath, line, column, direction, depth)
+			text, err := tools.GetCallHierarchy(s.ctx, s.lspClient, filePath, line, column, direction, depth)
+			if err != nil {
+				coreLogger.Error("Failed to get call hierarchy: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to get call hierarchy: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+	} else {
+		coreLogger.Info("Skipping 'call_hierarchy' tool — LSP lacks callHierarchy capability")
+	}
+
+	if lsp.HasCodeLensSupport(caps) {
+		getCodeLensTool := mcp.NewTool("get_codelens",
+			mcp.WithDescription("List the code lens hints for a file (runnable commands like 'run test' or 'go mod tidy', reference counts, etc.). Each lens gets an index usable with execute_codelens."),
+			mcp.WithTitleAnnotation("Get Code Lenses"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the file")),
+		)
+		s.addTool(getCodeLensTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			coreLogger.Debug("Executing get_codelens for %s", filePath)
+			text, err := tools.GetCodeLens(s.ctx, s.lspClient, filePath)
+			if err != nil {
+				coreLogger.Error("Failed to get code lenses: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to get code lenses: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+
+		executeCodeLensTool := mcp.NewTool("execute_codelens",
+			mcp.WithDescription("Resolve and execute the code lens command at the given index (from get_codelens) in a file."),
+			mcp.WithTitleAnnotation("Execute Code Lens"),
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the file")),
+			mcp.WithNumber("index", mcp.Required(), mcp.Description("Index of the code lens to execute, as reported by get_codelens (1-indexed)")),
+		)
+		s.addTool(executeCodeLensTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			index, err := request.RequireInt("index")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			coreLogger.Debug("Executing execute_codelens for %s index %d", filePath, index)
+			text, err := tools.ExecuteCodeLens(s.ctx, s.lspClient, filePath, index)
+			if err != nil {
+				coreLogger.Error("Failed to execute code lens: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to execute code lens: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+	} else {
+		coreLogger.Info("Skipping 'get_codelens'/'execute_codelens' tools — LSP lacks codeLens capability")
 	}
 
 	if len(s.config.disabledTools) > 0 {

@@ -141,6 +141,29 @@ func HasLinkedEditingRangeSupport(caps *protocol.ServerCapabilities) bool {
 		caps.LinkedEditingRangeProvider.Value != nil
 }
 
+func HasWorkspaceSymbolSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.WorkspaceSymbolProvider != nil &&
+		caps.WorkspaceSymbolProvider.Value != nil
+}
+
+func HasCallHierarchySupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.CallHierarchyProvider != nil &&
+		caps.CallHierarchyProvider.Value != nil
+}
+
+func HasCodeLensSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.CodeLensProvider != nil
+}
+
 // HasPrepareRenameSupport reports whether the server advertises rename and the
 // optional prepareProvider sub-capability. RenameProvider is interface{}; when
 // it decodes as RenameOptions the prepare flag lives there. Servers that

@@ -1,0 +1,5 @@
+/TEST_OUTPUT/workspace/helper.go:L4  HelperFunction [Function]  (github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace • helper.go)
+
+Incoming calls (callers):
+/TEST_OUTPUT/workspace/another_consumer.go:L6  AnotherConsumer [Function]  (github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace • another_consumer.go)  calls at L8
+/TEST_OUTPUT/workspace/consumer.go:L6  ConsumerFunction [Function]  (github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace • consumer.go)  calls at L7

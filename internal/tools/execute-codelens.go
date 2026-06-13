@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/STRd6/mcp-language-server/internal/lsp"
 	"github.com/STRd6/mcp-language-server/internal/protocol"
@@ -16,8 +15,6 @@ func ExecuteCodeLens(ctx context.Context, client *lsp.Client, filePath string, i
 	if err != nil {
 		return "", fmt.Errorf("could not open file: %v", err)
 	}
-	// TODO: find a more appropriate way to wait
-	time.Sleep(time.Second)
 
 	// Get code lenses
 	docIdentifier := protocol.TextDocumentIdentifier{

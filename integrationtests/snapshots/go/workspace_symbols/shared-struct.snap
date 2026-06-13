@@ -1,0 +1,9 @@
+Workspace symbols matching "SharedStruct" (8):
+/TEST_OUTPUT/workspace/types.go:L6:C6  SharedStruct [Struct]  (in github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace)
+/TEST_OUTPUT/workspace/types.go:L7:C2  SharedStruct.ID [Field]  (in github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace)
+/TEST_OUTPUT/workspace/types.go:L8:C2  SharedStruct.Name [Field]  (in github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace)
+/TEST_OUTPUT/workspace/types.go:L9:C2  SharedStruct.Value [Field]  (in github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace)
+/TEST_OUTPUT/workspace/types.go:L14:C24  SharedStruct.Method [Method]  (in github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace)
+/TEST_OUTPUT/workspace/types.go:L37:C24  SharedStruct.GetName [Method]  (in github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace)
+/TEST_OUTPUT/workspace/types.go:L31:C24  SharedStruct.Process [Method]  (in github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace)
+/TEST_OUTPUT/workspace/types.go:L10:C2  SharedStruct.Constants [Field]  (in github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace)

@@ -186,7 +186,7 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 		return
 	}
 
-	coreLogger.Info("LSP capabilities: definition=%v references=%v hover=%v rename=%v documentSymbol=%v codeAction=%v formatting=%v semanticTokens=%v signatureHelp=%v typeDefinition=%v implementation=%v documentHighlight=%v foldingRange=%v selectionRange=%v linkedEditingRange=%v prepareRename=%v workspaceSymbol=%v callHierarchy=%v codeLens=%v",
+	coreLogger.Info("LSP capabilities: definition=%v references=%v hover=%v rename=%v documentSymbol=%v codeAction=%v formatting=%v semanticTokens=%v signatureHelp=%v typeDefinition=%v implementation=%v documentHighlight=%v foldingRange=%v selectionRange=%v linkedEditingRange=%v prepareRename=%v workspaceSymbol=%v callHierarchy=%v typeHierarchy=%v codeLens=%v",
 		lsp.HasDefinitionSupport(caps),
 		lsp.HasReferencesSupport(caps),
 		lsp.HasHoverSupport(caps),
@@ -205,6 +205,7 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 		lsp.HasPrepareRenameSupport(caps),
 		lsp.HasWorkspaceSymbolSupport(caps),
 		lsp.HasCallHierarchySupport(caps),
+		lsp.HasTypeHierarchySupport(caps),
 		lsp.HasCodeLensSupport(caps),
 	)
 
@@ -988,6 +989,51 @@ func (s *mcpServer) registerCapabilityTools(caps *protocol.ServerCapabilities) {
 		})
 	} else {
 		coreLogger.Info("Skipping 'call_hierarchy' tool — LSP lacks callHierarchy capability")
+	}
+
+	if lsp.HasTypeHierarchySupport(caps) {
+		typeHierarchyTool := mcp.NewTool("type_hierarchy",
+			mcp.WithDescription("Show the type hierarchy for the type at the given position: supertypes (interfaces/base classes it implements or extends) and/or subtypes (types that implement or extend it), expanded to the requested depth."),
+			mcp.WithTitleAnnotation("Type Hierarchy"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the file")),
+			mcp.WithNumber("line", mcp.Required(), mcp.Description("Line number of the type (1-indexed)")),
+			mcp.WithNumber("column", mcp.Required(), mcp.Description("Column number of the type (1-indexed)")),
+			mcp.WithString("direction",
+				mcp.Description("'supertypes', 'subtypes', or 'both'"),
+				mcp.DefaultString("both"),
+			),
+			mcp.WithNumber("depth",
+				mcp.Description("How many levels to expand (1-3). Defaults to 1."),
+				mcp.DefaultNumber(1),
+			),
+		)
+		s.addTool(typeHierarchyTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, err := request.RequireString("filePath")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			line, err := request.RequireInt("line")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			column, err := request.RequireInt("column")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			direction := request.GetString("direction", "both")
+			depth := request.GetInt("depth", 1)
+
+			coreLogger.Debug("Executing type_hierarchy for %s:%d:%d (direction=%s depth=%d)", filePath, line, column, direction, depth)
+			text, err := tools.GetTypeHierarchy(s.ctx, s.lspClient, filePath, line, column, direction, depth)
+			if err != nil {
+				coreLogger.Error("Failed to get type hierarchy: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("failed to get type hierarchy: %v", err)), nil
+			}
+			return mcp.NewToolResultText(text), nil
+		})
+	} else {
+		coreLogger.Info("Skipping 'type_hierarchy' tool — LSP lacks typeHierarchy capability")
 	}
 
 	if lsp.HasCodeLensSupport(caps) {

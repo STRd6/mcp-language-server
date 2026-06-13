@@ -1,0 +1,4 @@
+/TEST_OUTPUT/workspace/types.go:L6  SharedStruct [Class]  (github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace)
+
+Supertypes (implements/extends):
+/TEST_OUTPUT/workspace/types.go:L19  SharedInterface [Interface]  (github.com/STRd6/mcp-language-server/integrationtests/test-output/go/workspace)

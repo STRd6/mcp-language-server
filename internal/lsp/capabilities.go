@@ -157,6 +157,14 @@ func HasCallHierarchySupport(caps *protocol.ServerCapabilities) bool {
 		caps.CallHierarchyProvider.Value != nil
 }
 
+func HasTypeHierarchySupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.TypeHierarchyProvider != nil &&
+		caps.TypeHierarchyProvider.Value != nil
+}
+
 func HasCodeLensSupport(caps *protocol.ServerCapabilities) bool {
 	if caps == nil {
 		return false

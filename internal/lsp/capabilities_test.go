@@ -50,6 +50,9 @@ func linkedEditingProvider(v any) *protocol.Or_ServerCapabilities_linkedEditingR
 func callHierarchyProvider(v any) *protocol.Or_ServerCapabilities_callHierarchyProvider {
 	return &protocol.Or_ServerCapabilities_callHierarchyProvider{Value: v}
 }
+func typeHierarchyProvider(v any) *protocol.Or_ServerCapabilities_typeHierarchyProvider {
+	return &protocol.Or_ServerCapabilities_typeHierarchyProvider{Value: v}
+}
 
 func TestCapabilityHelpers_NilCaps(t *testing.T) {
 	checks := map[string]func(*protocol.ServerCapabilities) bool{
@@ -72,6 +75,7 @@ func TestCapabilityHelpers_NilCaps(t *testing.T) {
 		"HasPrepareRenameSupport":      HasPrepareRenameSupport,
 		"HasWorkspaceSymbolSupport":    HasWorkspaceSymbolSupport,
 		"HasCallHierarchySupport":      HasCallHierarchySupport,
+		"HasTypeHierarchySupport":      HasTypeHierarchySupport,
 		"HasCodeLensSupport":           HasCodeLensSupport,
 	}
 	for name, fn := range checks {
@@ -328,6 +332,12 @@ func TestOrTypeHelpersExtra(t *testing.T) {
 			HasCallHierarchySupport,
 			&protocol.ServerCapabilities{CallHierarchyProvider: callHierarchyProvider(true)},
 			&protocol.ServerCapabilities{CallHierarchyProvider: callHierarchyProvider(nil)},
+		},
+		{
+			"type hierarchy",
+			HasTypeHierarchySupport,
+			&protocol.ServerCapabilities{TypeHierarchyProvider: typeHierarchyProvider(true)},
+			&protocol.ServerCapabilities{TypeHierarchyProvider: typeHierarchyProvider(nil)},
 		},
 	}
 	for _, c := range cases {

@@ -10,6 +10,10 @@ project adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 - `call_hierarchy` tool: incoming calls (callers) and/or outgoing calls
   (callees) for the function/method at a position, expandable to depth
   3 with cycle detection. Gated on the `callHierarchy` capability.
+- `type_hierarchy` tool: supertypes (implements/extends) and/or
+  subtypes (implemented/extended by) for the type at a position,
+  expandable to depth 3 with cycle detection. Gated on the
+  `typeHierarchy` capability.
 - `workspace_symbols` tool: workspace-wide symbol search via
   `workspace/symbol` (the request `definition`/`references` already
   used internally, now exposed directly). Server-side fuzzy/substring
